@@ -1,0 +1,75 @@
+export type CliMode = "notify" | "focus";
+
+export type CliOptions = {
+  readonly mode: CliMode;
+  readonly title?: string;
+  readonly message?: string;
+  readonly terminal?: string;
+  readonly termBundleId?: string;
+  readonly sound?: string;
+  readonly codex: boolean;
+  readonly claude: boolean;
+  readonly dryRun: boolean;
+  readonly verbose: boolean;
+  readonly payload?: string;
+};
+
+export type RuntimeInfo = {
+  readonly nodeVersion?: string;
+  readonly bunVersion?: string;
+};
+
+export type BinaryReport = {
+  readonly tmux: string;
+  readonly terminalNotifier: string;
+  readonly osascript: string;
+};
+
+export type EnvironmentReport = {
+  readonly runtime: RuntimeInfo;
+  readonly binaries: BinaryReport;
+};
+
+export type TmuxContext = {
+  readonly tmuxBin: string;
+  readonly socketPath: string;
+  readonly clientTTY: string;
+  readonly sessionName: string;
+  readonly windowId: string;
+  readonly windowIndex: number;
+  readonly paneId: string;
+  readonly paneIndex: number;
+  readonly paneCurrentCommand: string;
+};
+
+export type TerminalProfile = {
+  readonly key: string;
+  readonly name: string;
+  readonly bundleId: string;
+  readonly source: "override" | "env" | "default";
+};
+
+export type FocusPayload = {
+  readonly tmux: TmuxContext;
+  readonly terminal: TerminalProfile;
+};
+
+export type NotificationContent = {
+  readonly title: string;
+  readonly message: string;
+  readonly sound?: string;
+};
+
+export type FocusCommand = {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly payload: string;
+};
+
+export type NotificationOptions = {
+  readonly title: string;
+  readonly message: string;
+  readonly executeCommand: string;
+  readonly notifierPath: string;
+  readonly sound?: string;
+};
