@@ -69,6 +69,7 @@ const samplePayload: FocusPayload = {
 const focusCommand: FocusCommand = {
   command: "node dist/index.js --mode focus",
   args: ["dist/index.js", "--mode", "focus"],
+  executable: process.execPath,
   payload: "encoded"
 };
 
@@ -78,7 +79,8 @@ const environmentReport: EnvironmentReport = {
   },
   binaries: {
     tmux: sampleTmux.tmuxBin,
-    terminalNotifier: "/opt/homebrew/bin/terminal-notifier",
+    notifier: "/opt/homebrew/bin/terminal-notifier",
+    notifierKind: "terminal-notifier",
     osascript: "/usr/bin/osascript"
   }
 };
@@ -102,7 +104,8 @@ describe("runNotify", () => {
       mode: "notify",
       dryRun: true,
       verbose: true,
-      codex: false
+      codex: false,
+      notifier: "terminal-notifier"
     } as CliOptions;
 
     const result = await __internal.runNotify(options, environmentReport);
@@ -120,7 +123,8 @@ describe("runNotify", () => {
       mode: "notify",
       dryRun: true,
       verbose: false,
-      codex: false
+      codex: false,
+      notifier: "terminal-notifier"
     } as CliOptions;
 
     const result = await __internal.runNotify(options, environmentReport);
@@ -137,7 +141,8 @@ describe("runNotify", () => {
       mode: "notify",
       dryRun: true,
       verbose: false,
-      codex: false
+      codex: false,
+      notifier: "terminal-notifier"
     } as CliOptions;
 
     await __internal.runNotify(options, environmentReport);
@@ -151,7 +156,8 @@ describe("runNotify", () => {
       sound: "Ping",
       dryRun: false,
       verbose: false,
-      codex: false
+      codex: false,
+      notifier: "terminal-notifier"
     } as CliOptions;
 
     await __internal.runNotify(options, environmentReport);
@@ -167,7 +173,8 @@ describe("runFocus", () => {
       payload: focusCommand.payload,
       dryRun: false,
       verbose: false,
-      codex: false
+      codex: false,
+      notifier: "terminal-notifier"
     } as CliOptions;
 
     const result = await __internal.runFocus(options);
@@ -191,7 +198,8 @@ describe("resolveNotificationDetails", () => {
       mode: "notify",
       dryRun: false,
       verbose: false,
-      codex: true
+      codex: true,
+      notifier: "terminal-notifier"
     } as CliOptions;
 
     const details = __internal.resolveNotificationDetails(sampleTmux, options, codex);
@@ -215,7 +223,8 @@ describe("resolveNotificationDetails", () => {
       sound: "Glass",
       dryRun: false,
       verbose: false,
-      codex: true
+      codex: true,
+      notifier: "terminal-notifier"
     } as CliOptions;
 
     const details = __internal.resolveNotificationDetails(sampleTmux, options, codex);
@@ -231,7 +240,8 @@ describe("resolveNotificationDetails", () => {
       dryRun: false,
       verbose: false,
       codex: true,
-      claude: false
+      claude: false,
+      notifier: "terminal-notifier"
     } as CliOptions;
 
     const details = __internal.resolveNotificationDetails(sampleTmux, options, undefined);
@@ -254,6 +264,16 @@ describe("parseArguments", () => {
   it("enables Claude mode flag", () => {
     const options = __internal.parseArguments(["--claude"]);
     expect(options.claude).toBe(true);
+  });
+
+  it("defaults notifier to terminal-notifier", () => {
+    const options = __internal.parseArguments([]);
+    expect(options.notifier).toBe("terminal-notifier");
+  });
+
+  it("allows selecting swiftDialog notifier", () => {
+    const options = __internal.parseArguments(["--notifier", "swiftdialog"]);
+    expect(options.notifier).toBe("swiftdialog");
   });
 });
 

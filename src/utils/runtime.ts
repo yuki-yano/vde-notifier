@@ -1,5 +1,5 @@
 import { yellow } from "kleur/colors";
-import type { EnvironmentReport, RuntimeInfo } from "../types.js";
+import type { EnvironmentReport, NotifierKind, RuntimeInfo } from "../types.js";
 import { ensureBinary } from "./binary.js";
 
 const detectRuntime = (): RuntimeInfo => ({
@@ -16,10 +16,14 @@ export const assertRuntimeSupport = (): void => {
   }
 };
 
-export const verifyRequiredBinaries = async (): Promise<EnvironmentReport> => {
+export const verifyRequiredBinaries = async (
+  notifier: NotifierKind = "terminal-notifier"
+): Promise<EnvironmentReport> => {
+  const notifierCommand = notifier === "swiftdialog" ? "dialog" : "terminal-notifier";
+
   const [tmuxPath, notifierPath, osascriptPath] = await Promise.all([
     ensureBinary("tmux"),
-    ensureBinary("terminal-notifier"),
+    ensureBinary(notifierCommand),
     ensureBinary("osascript")
   ]);
 
@@ -27,7 +31,8 @@ export const verifyRequiredBinaries = async (): Promise<EnvironmentReport> => {
     runtime: detectRuntime(),
     binaries: {
       tmux: tmuxPath,
-      terminalNotifier: notifierPath,
+      notifier: notifierPath,
+      notifierKind: notifier,
       osascript: osascriptPath
     }
   };

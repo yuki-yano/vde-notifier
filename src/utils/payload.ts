@@ -68,6 +68,7 @@ export const buildFocusCommand = (
   return {
     command: serialized,
     args,
+    executable: execPath,
     payload: encoded
   };
 };

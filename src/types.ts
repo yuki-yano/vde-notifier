@@ -1,5 +1,7 @@
 export type CliMode = "notify" | "focus";
 
+export type NotifierKind = "terminal-notifier" | "swiftdialog";
+
 export type CliOptions = {
   readonly mode: CliMode;
   readonly title?: string;
@@ -7,6 +9,7 @@ export type CliOptions = {
   readonly terminal?: string;
   readonly termBundleId?: string;
   readonly sound?: string;
+  readonly notifier: NotifierKind;
   readonly codex: boolean;
   readonly claude: boolean;
   readonly dryRun: boolean;
@@ -21,7 +24,8 @@ export type RuntimeInfo = {
 
 export type BinaryReport = {
   readonly tmux: string;
-  readonly terminalNotifier: string;
+  readonly notifier: string;
+  readonly notifierKind: NotifierKind;
   readonly osascript: string;
 };
 
@@ -63,13 +67,15 @@ export type NotificationContent = {
 export type FocusCommand = {
   readonly command: string;
   readonly args: readonly string[];
+  readonly executable: string;
   readonly payload: string;
 };
 
 export type NotificationOptions = {
   readonly title: string;
   readonly message: string;
-  readonly executeCommand: string;
+  readonly notifierKind: NotifierKind;
   readonly notifierPath: string;
+  readonly focusCommand: FocusCommand;
   readonly sound?: string;
 };

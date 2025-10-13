@@ -27,6 +27,7 @@ describe("focus command payload", () => {
     const command = buildFocusCommand(samplePayload);
     const decoded = parseFocusPayload(command.payload);
     expect(decoded).toEqual(samplePayload);
+    expect(command.executable).toBe(process.execPath);
   });
 
   it("includes verbose flag when requested", () => {

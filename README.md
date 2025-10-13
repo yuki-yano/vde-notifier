@@ -7,12 +7,15 @@ vde-notifier is a tmux-aware notification CLI for macOS. It surfaces long-runnin
 1. Install prerequisites:
 
 - macOS 14 or later
-- `tmux`, `terminal-notifier`
+- `tmux`, `terminal-notifier` (default notifier) — optionally `swiftDialog`
 - Node.js 20+ or Bun 1.1+
 - `pnpm`
 
 ```bash
 brew install terminal-notifier
+# optional: install swiftDialog via Homebrew tap
+brew install yuki-yano/swiftdialog/swift-dialog
+#   (or download the official pkg from https://github.com/swiftDialog/swiftDialog/releases)
 ```
 
 2. Run the CLI without installing (choose one):
@@ -52,8 +55,11 @@ vde-notifier --title "Build finished" --message "webpack completed"
 - `--claude`: Consume Claude Code JSON piped on stdin (supports `transcript_path` to pull the latest assistant reply).
 - `--terminal <profile>`: Force a terminal profile (alacritty, wezterm, ghostty, etc.).
 - `--term-bundle-id <bundleId>`: Override the bundle identifier when auto detection is insufficient.
+- `--notifier <terminal-notifier|swiftdialog>`: Switch the notification backend. Defaults to `terminal-notifier`.
 - `--dry-run`: Skips sending a notification. Combine with `--verbose` to print the gathered tmux metadata and focus command.
 - `--verbose`: Emits JSON logs describing notify and focus stages.
+
+When `--notifier swiftdialog` is selected, vde-notifier sends `dialog --notification ...` with a primary action wired to the focus command. Clicking the notification will restore the tmux pane; SwiftDialog does not honour custom sound names in this mode.
 
 Environment overrides:
 

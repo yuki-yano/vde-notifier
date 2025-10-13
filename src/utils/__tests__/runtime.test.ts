@@ -55,8 +55,22 @@ describe("runtime utilities", () => {
       expect(mockEnsureBinary).toHaveBeenNthCalledWith(2, "terminal-notifier");
       expect(mockEnsureBinary).toHaveBeenNthCalledWith(3, "osascript");
       expect(report.binaries.tmux).toBe("/usr/bin/tmux");
-      expect(report.binaries.terminalNotifier).toBe("/usr/bin/terminal-notifier");
+      expect(report.binaries.notifier).toBe("/usr/bin/terminal-notifier");
+      expect(report.binaries.notifierKind).toBe("terminal-notifier");
       expect(report.binaries.osascript).toBe("/usr/bin/osascript");
+    });
+
+    it("supports selecting swiftDialog as notifier", async () => {
+      mockEnsureBinary.mockResolvedValueOnce("/usr/bin/tmux");
+      mockEnsureBinary.mockResolvedValueOnce("/usr/local/bin/dialog");
+      mockEnsureBinary.mockResolvedValueOnce("/usr/bin/osascript");
+
+      const report = await runtime.verifyRequiredBinaries("swiftdialog");
+
+      expect(mockEnsureBinary).toHaveBeenCalledTimes(3);
+      expect(mockEnsureBinary).toHaveBeenNthCalledWith(2, "dialog");
+      expect(report.binaries.notifier).toBe("/usr/local/bin/dialog");
+      expect(report.binaries.notifierKind).toBe("swiftdialog");
     });
   });
 
@@ -70,7 +84,8 @@ describe("runtime utilities", () => {
         },
         binaries: {
           tmux: "/tmp/tmux",
-          terminalNotifier: "/tmp/tn",
+          notifier: "/tmp/tn",
+          notifierKind: "terminal-notifier",
           osascript: "/usr/bin/osascript"
         }
       };

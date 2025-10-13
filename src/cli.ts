@@ -9,6 +9,7 @@ import type {
   CliOptions,
   EnvironmentReport,
   FocusPayload,
+  NotifierKind,
   NotificationContent,
   TerminalProfile,
   TmuxContext
@@ -206,7 +207,8 @@ const optionsWithValue = new Set<string>([
   "--terminal",
   "--term-bundle-id",
   "--sound",
-  "--payload"
+  "--payload",
+  "--notifier"
 ]);
 
 const flagOnlyOptions = new Set<string>(["--codex", "--claude", "--dry-run", "--verbose"]);
@@ -470,6 +472,25 @@ const resolveNotificationDetails = (
   };
 };
 
+const notifierSchema = z.unknown().transform<NotifierKind>((value) => {
+  if (value === undefined || value === null) {
+    return "terminal-notifier";
+  }
+  if (typeof value !== "string") {
+    throw new Error("Notifier must be a string");
+  }
+
+  const normalized = value.toLowerCase();
+  if (normalized === "terminal-notifier") {
+    return "terminal-notifier";
+  }
+  if (normalized === "swiftdialog" || normalized === "dialog") {
+    return "swiftdialog";
+  }
+
+  throw new Error(`Unsupported notifier: ${value}`);
+});
+
 const cliSchema = z.object({
   mode: z.enum(MODES).default("notify"),
   title: z.string().optional(),
@@ -480,6 +501,7 @@ const cliSchema = z.object({
     .string()
     .optional()
     .transform((value) => (typeof value === "string" && value.length > 0 ? value : undefined)),
+  notifier: notifierSchema,
   codex: z.boolean().default(false),
   claude: z.boolean().default(false),
   dryRun: z.boolean().default(false),
@@ -540,6 +562,7 @@ const parseArguments = (args: readonly string[]): CliOptions => {
     terminal: collected.terminal,
     termBundleId: collected["term-bundle-id"],
     sound: collected.sound,
+    notifier: collected.notifier,
     codex: collected.codex === true,
     claude: collected.claude === true,
     dryRun: collected["dry-run"],
@@ -649,10 +672,11 @@ const runNotify = async (
   });
 
   await sendNotification({
-    notifierPath: report.binaries.terminalNotifier,
+    notifierKind: report.binaries.notifierKind,
+    notifierPath: report.binaries.notifier,
     title: notification.title,
     message: notification.message,
-    executeCommand: focusCommand.command,
+    focusCommand,
     sound: soundName
   });
 
@@ -679,7 +703,7 @@ export const main = async (): Promise<number> => {
     const options = parseArguments(rawArgs);
     assertRuntimeSupport();
     if (options.mode === "notify") {
-      const report = await verifyRequiredBinaries();
+      const report = await verifyRequiredBinaries(options.notifier);
       logBinaryReport(report, options.verbose);
       return await runNotify(options, report, rawArgs);
     }
