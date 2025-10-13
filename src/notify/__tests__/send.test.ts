@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { sendNotification } from "../send.js";
+import { sendNotification, __internal } from "../send.js";
 
 vi.mock("execa", () => ({
   execa: vi.fn()
@@ -34,6 +34,22 @@ describe("sendNotification", () => {
       "-sound",
       "Ping"
     ]);
+  });
+
+  it("truncates long messages before sending", async () => {
+    const longMessage = "x".repeat(__internal.MAX_MESSAGE_LENGTH + 10);
+
+    await sendNotification({
+      notifierPath: "/opt/homebrew/bin/terminal-notifier",
+      title: "Done",
+      message: longMessage,
+      executeCommand: "focus-command",
+      sound: "Ping"
+    });
+
+    const args = execaMock.mock.calls[0][1] as string[];
+    expect(args[3]).toHaveLength(__internal.MAX_MESSAGE_LENGTH);
+    expect(args[3]).toBe(longMessage.slice(0, __internal.MAX_MESSAGE_LENGTH));
   });
 
   it("omits sound flag when None is requested", async () => {
