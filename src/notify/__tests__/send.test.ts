@@ -86,8 +86,13 @@ describe("sendNotification", () => {
       sound: "Ping"
     });
 
-    expect(execaMock).toHaveBeenCalledTimes(1);
-    const [command, args] = execaMock.mock.calls[0];
+    expect(execaMock).toHaveBeenCalledTimes(2);
+
+    const [soundCommand, soundArgs] = execaMock.mock.calls[0];
+    expect(soundCommand).toBe(__internal.SWIFT_DIALOG_SOUND_PLAYER);
+    expect(soundArgs).toEqual([__internal.resolveSoundResource("Ping")]);
+
+    const [command, args] = execaMock.mock.calls[1];
     expect(command).toBe("/usr/local/bin/dialog");
     expect(args).toEqual(
       expect.arrayContaining([
@@ -102,5 +107,20 @@ describe("sendNotification", () => {
         focusCommand.command
       ])
     );
+  });
+
+  it("skips playing sound for swiftDialog when None is requested", async () => {
+    await sendNotification({
+      notifierKind: "swiftdialog",
+      notifierPath: "/usr/local/bin/dialog",
+      title: "Done",
+      message: "Build finished",
+      focusCommand,
+      sound: "none"
+    });
+
+    expect(execaMock).toHaveBeenCalledTimes(1);
+    const [command] = execaMock.mock.calls[0];
+    expect(command).toBe("/usr/local/bin/dialog");
   });
 });

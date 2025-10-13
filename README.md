@@ -59,7 +59,7 @@ vde-notifier --title "Build finished" --message "webpack completed"
 - `--dry-run`: Skips sending a notification. Combine with `--verbose` to print the gathered tmux metadata and focus command.
 - `--verbose`: Emits JSON logs describing notify and focus stages.
 
-When `--notifier swiftdialog` is selected, vde-notifier sends `dialog --notification ...` with a primary action wired to the focus command. Clicking the notification will restore the tmux pane; SwiftDialog does not honour custom sound names in this mode.
+When `--notifier swiftdialog` is selected, vde-notifier plays the requested sound locally and then sends `dialog --notification ...` with a primary action wired to the focus command. Clicking the notification will restore the tmux pane.
 
 Environment overrides:
 
