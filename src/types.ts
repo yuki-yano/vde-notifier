@@ -14,6 +14,7 @@ export type CliOptions = {
   readonly claude: boolean;
   readonly dryRun: boolean;
   readonly verbose: boolean;
+  readonly logFile?: string;
   readonly payload?: string;
 };
 

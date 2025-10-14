@@ -34,4 +34,11 @@ describe("focus command payload", () => {
     const command = buildFocusCommand(samplePayload, { verbose: true });
     expect(command.args).toContain("--verbose");
   });
+
+  it("includes log file when provided", () => {
+    const logPath = "/tmp/vde-notifier.log";
+    const command = buildFocusCommand(samplePayload, { logFile: logPath });
+    expect(command.args).toContain("--log-file");
+    expect(command.args).toContain(logPath);
+  });
 });

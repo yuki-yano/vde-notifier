@@ -53,7 +53,7 @@ const payloadSchema = z.object({
 
 export const buildFocusCommand = (
   payload: FocusPayload,
-  options: { readonly verbose?: boolean } = {}
+  options: { readonly verbose?: boolean; readonly logFile?: string } = {}
 ): FocusCommand => {
   const encoded = encode(payload);
   const execPath = process.execPath;
@@ -62,6 +62,9 @@ export const buildFocusCommand = (
   const args = [entryPoint, "--mode", "focus", "--payload", encoded];
   if (options.verbose === true) {
     args.push("--verbose");
+  }
+  if (typeof options.logFile === "string" && options.logFile.length > 0) {
+    args.push("--log-file", options.logFile);
   }
   const serialized = `${escapeShell(execPath)} ${args.map(escapeShell).join(" ")}`;
 

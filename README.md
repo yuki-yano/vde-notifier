@@ -58,6 +58,7 @@ vde-notifier --title "Build finished" --message "webpack completed"
 - `--notifier <terminal-notifier|swiftdialog>`: Switch the notification backend. Defaults to `terminal-notifier`.
 - `--dry-run`: Skips sending a notification. Combine with `--verbose` to print the gathered tmux metadata and focus command.
 - `--verbose`: Emits JSON logs describing notify and focus stages.
+- `--log-file <path>`: Appends the same JSON diagnostics to the given file (one JSON object per line). Also propagates to focus-mode invocations.
 
 When `--notifier swiftdialog` is selected, vde-notifier plays the requested sound locally and then sends `dialog --notification ...` with a primary action wired to the focus command. Clicking the notification will restore the tmux pane.
 
@@ -65,6 +66,7 @@ Environment overrides:
 
 - `VDE_NOTIFIER_TERMINAL=alacritty` sets the default terminal profile when `--terminal` is omitted.
   Valid aliases: `terminal`, `apple-terminal`, `mac-terminal`, `iterm`, `iterm2`, `alacritty`, `kitty`, `wezterm`, `hyper`, `ghostty` (non-matching values fall back to Terminal.app).
+- `VDE_NOTIFIER_LOG_FILE=/path/to/diagnostics.log` mirrors `--log-file` so every run writes diagnostics even without passing the CLI flag.
 
 ## Typical Workflow
 
