@@ -8,8 +8,12 @@ const SWIFT_DIALOG_SOUND_PLAYER = "afplay";
 const SYSTEM_SOUND_DIRECTORY = "/System/Library/Sounds";
 const SOUND_RESOURCE_EXTENSION = ".aiff";
 
-const truncateMessage = (value: string): string =>
-  value.length > MAX_MESSAGE_LENGTH ? value.slice(0, MAX_MESSAGE_LENGTH) : value;
+const normalizeMessage = (value: string): string => (value.startsWith("-") ? ` ${value}` : value);
+
+const truncateMessage = (value: string): string => {
+  const normalized = normalizeMessage(value);
+  return normalized.length > MAX_MESSAGE_LENGTH ? normalized.slice(0, MAX_MESSAGE_LENGTH) : normalized;
+};
 
 const resolveSoundRequest = (sound?: string): string | undefined => {
   const candidate = (sound ?? DEFAULT_SOUND).trim();
@@ -105,5 +109,6 @@ export const __internal = {
   resolveSoundRequest,
   resolveSoundResource,
   playSoundRequest,
-  truncateMessage
+  truncateMessage,
+  normalizeMessage
 };

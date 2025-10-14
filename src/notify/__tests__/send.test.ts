@@ -123,4 +123,32 @@ describe("sendNotification", () => {
     const [command] = execaMock.mock.calls[0];
     expect(command).toBe("/usr/local/bin/dialog");
   });
+
+  it("adds a leading space when message starts with hyphen for terminal-notifier", () => {
+    const args = __internal.buildTerminalNotifierArgs({
+      notifierKind: "terminal-notifier",
+      notifierPath: "/opt/homebrew/bin/terminal-notifier",
+      title: "Done",
+      message: "- bullet",
+      focusCommand,
+      sound: undefined
+    });
+
+    const messageIndex = args.indexOf("-message") + 1;
+    expect(args[messageIndex]).toBe(" - bullet");
+  });
+
+  it("adds a leading space when message starts with hyphen for swiftDialog", () => {
+    const args = __internal.buildSwiftDialogArgs({
+      notifierKind: "swiftdialog",
+      notifierPath: "/usr/local/bin/dialog",
+      title: "Done",
+      message: "- bullet",
+      focusCommand,
+      sound: undefined
+    });
+
+    const messageIndex = args.indexOf("--message") + 1;
+    expect(args[messageIndex]).toBe(" - bullet");
+  });
 });
