@@ -49,7 +49,7 @@ const playSoundRequest = async (sound?: string): Promise<void> => {
   try {
     await execa(SWIFT_DIALOG_SOUND_PLAYER, [resource]);
   } catch {
-    // 音再生が失敗しても通知送信は継続する
+    // Keep sending the notification even if sound playback fails
   }
 };
 

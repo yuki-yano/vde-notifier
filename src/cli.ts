@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { fileURLToPath } from "node:url";
-import { basename, join, relative, resolve } from "node:path";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { argv, env as processEnv, exit, stdin as processStdin } from "node:process";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { z } from "zod";
 import { bold, red } from "kleur/colors";
 import type {
@@ -208,7 +208,8 @@ const optionsWithValue = new Set<string>([
   "--term-bundle-id",
   "--sound",
   "--payload",
-  "--notifier"
+  "--notifier",
+  "--log-file"
 ]);
 
 const flagOnlyOptions = new Set<string>(["--codex", "--claude", "--dry-run", "--verbose"]);
@@ -506,6 +507,10 @@ const cliSchema = z.object({
   claude: z.boolean().default(false),
   dryRun: z.boolean().default(false),
   verbose: z.boolean().default(false),
+  logFile: z
+    .string()
+    .optional()
+    .transform((value) => (typeof value === "string" && value.trim().length > 0 ? value : undefined)),
   payload: z.string().optional()
 });
 
@@ -555,6 +560,10 @@ const parseArguments = (args: readonly string[]): CliOptions => {
     }
   }
 
+  const optionLogFile = asNonEmptyString(collected["log-file"]);
+  const envLogFile = asNonEmptyString(processEnv.VDE_NOTIFIER_LOG_FILE);
+  const resolvedLogFile = optionLogFile ?? envLogFile;
+
   const parsed = cliSchema.safeParse({
     mode: collected.mode,
     title: collected.title,
@@ -567,6 +576,7 @@ const parseArguments = (args: readonly string[]): CliOptions => {
     claude: collected.claude === true,
     dryRun: collected["dry-run"],
     verbose: collected.verbose,
+    logFile: resolvedLogFile,
     payload: collected.payload
   });
 
@@ -597,6 +607,25 @@ const printError = (error: unknown): void => {
   console.error(red(bold(message)));
 };
 
+const appendDiagnosticLog = (logFile: string | undefined, detail: unknown): void => {
+  if (typeof logFile !== "string" || logFile.trim().length === 0) {
+    return;
+  }
+  try {
+    const directory = dirname(logFile);
+    if (directory !== "" && directory !== "." && directory !== "/") {
+      mkdirSync(directory, { recursive: true });
+    }
+    const entry = {
+      timestamp: new Date().toISOString(),
+      detail
+    };
+    appendFileSync(logFile, `${JSON.stringify(entry)}\n`, { encoding: "utf8" });
+  } catch {
+    // Avoid impacting runtime behavior if logging fails
+  }
+};
+
 const performDryRun = (
   tmux: TmuxContext,
   terminal: TerminalProfile,
@@ -604,7 +633,8 @@ const performDryRun = (
   payload: FocusPayload,
   command: string,
   sound?: string,
-  verbose?: boolean
+  verbose?: boolean,
+  logFile?: string
 ): void => {
   const summary = {
     tmux,
@@ -619,13 +649,14 @@ const performDryRun = (
   if (verbose === true) {
     console.log(JSON.stringify(summary, null, 2));
   }
+  appendDiagnosticLog(logFile, { stage: "dry-run", data: summary });
 };
 
-const logVerbose = (enabled: boolean, detail: unknown): void => {
-  if (!enabled) {
-    return;
+const logVerbose = (enabled: boolean, logFile: string | undefined, detail: unknown): void => {
+  if (enabled) {
+    console.error(JSON.stringify(detail, null, 2));
   }
-  console.error(JSON.stringify(detail, null, 2));
+  appendDiagnosticLog(logFile, detail);
 };
 
 const runNotify = async (
@@ -652,16 +683,25 @@ const runNotify = async (
     tmux,
     terminal
   };
-  const focusCommand = buildFocusCommand(payload, { verbose: options.verbose });
+  const focusCommand = buildFocusCommand(payload, { verbose: options.verbose, logFile: options.logFile });
 
   if (options.dryRun) {
-    performDryRun(tmux, terminal, notification, payload, focusCommand.command, notification.sound, options.verbose);
+    performDryRun(
+      tmux,
+      terminal,
+      notification,
+      payload,
+      focusCommand.command,
+      notification.sound,
+      options.verbose,
+      options.logFile
+    );
     return 0;
   }
 
   const soundName = notification.sound;
 
-  logVerbose(options.verbose, {
+  logVerbose(options.verbose, options.logFile, {
     stage: "notify",
     tmux,
     terminal,
@@ -686,7 +726,7 @@ const runNotify = async (
 const runFocus = async (options: CliOptions): Promise<number> => {
   const payload = parseFocusPayload(options.payload);
 
-  logVerbose(options.verbose, {
+  logVerbose(options.verbose, options.logFile, {
     stage: "focus",
     payload
   });
