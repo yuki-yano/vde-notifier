@@ -23,12 +23,21 @@ fi
 APP_DIR="${BUILD_DIR}/VdeNotifierApp.app"
 CONTENTS_DIR="${APP_DIR}/Contents"
 MACOS_DIR="${CONTENTS_DIR}/MacOS"
+RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 
 rm -rf "${APP_DIR}"
-mkdir -p "${MACOS_DIR}"
+mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
 cp "${BINARY_PATH}" "${MACOS_DIR}/vde-notifier-app"
 chmod +x "${MACOS_DIR}/vde-notifier-app"
+
+# Copy app icon
+ICON_SRC="${PROJECT_DIR}/Resources/AppIcon.icns"
+if [[ ! -f "${ICON_SRC}" ]]; then
+  echo "app icon not found: ${ICON_SRC}" >&2
+  exit 1
+fi
+cp "${ICON_SRC}" "${RESOURCES_DIR}/AppIcon.icns"
 
 cat > "${CONTENTS_DIR}/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -53,6 +62,8 @@ cat > "${CONTENTS_DIR}/Info.plist" <<PLIST
   <string>1</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>LSUIElement</key>
   <true/>
 </dict>
