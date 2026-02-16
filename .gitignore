@@ -1,2 +1,7 @@
 node_modules
 dist
+app/vde-notifier-app/.build
+app/vde-notifier-app/build
+build/VdeNotifierApp.app
+build/vde-notifier-app
+VdeNotifierApp.app.tar.gz

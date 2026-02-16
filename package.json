@@ -9,6 +9,10 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
+    "swift:test": "env -u LIBRARY_PATH swift test --package-path app/vde-notifier-app",
+    "swift:build": "env -u LIBRARY_PATH swift build --package-path app/vde-notifier-app --product vde-notifier-app",
+    "swift:app": "app/vde-notifier-app/scripts/build-app.sh",
+    "swift:release-asset": "app/vde-notifier-app/scripts/create-release-asset.sh",
     "lint": "eslint .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",

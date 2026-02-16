@@ -7,7 +7,7 @@ vde-notifier is a tmux-aware notification CLI for macOS. It surfaces long-runnin
 1. Install prerequisites:
 
 - macOS 14 or later
-- `tmux`, `terminal-notifier` (default notifier) — optionally `swiftDialog`
+- `tmux`, `terminal-notifier` (default notifier) — optionally `swiftDialog` or `vde-notifier-app`
 - Node.js 20+ or Bun 1.1+
 - `pnpm`
 
@@ -16,6 +16,9 @@ brew install terminal-notifier
 # optional: install swiftDialog via Homebrew tap
 brew install yuki-yano/swiftdialog/swift-dialog
 #   (or download the official pkg from https://github.com/swiftDialog/swiftDialog/releases)
+# optional: install vde-notifier-app from your tap
+brew tap yuki-yano/vde-notifier
+brew install --cask yuki-yano/vde-notifier/vde-notifier-app
 ```
 
 2. Run the CLI without installing (choose one):
@@ -55,12 +58,42 @@ vde-notifier --title "Build finished" --message "webpack completed"
 - `--claude`: Consume Claude Code JSON piped on stdin (supports `transcript_path` to pull the latest assistant reply).
 - `--terminal <profile>`: Force a terminal profile (alacritty, wezterm, ghostty, etc.).
 - `--term-bundle-id <bundleId>`: Override the bundle identifier when auto detection is insufficient.
-- `--notifier <terminal-notifier|swiftdialog>`: Switch the notification backend. Defaults to `terminal-notifier`.
+- `--notifier <terminal-notifier|swiftdialog|vde-notifier-app>`: Switch the notification backend. Defaults to `terminal-notifier`.
 - `--dry-run`: Skips sending a notification. Combine with `--verbose` to print the gathered tmux metadata and focus command.
 - `--verbose`: Emits JSON logs describing notify and focus stages.
 - `--log-file <path>`: Appends the same JSON diagnostics to the given file (one JSON object per line). Also propagates to focus-mode invocations.
 
 When `--notifier swiftdialog` is selected, vde-notifier plays the requested sound locally and then sends `dialog --notification ...` with a primary action wired to the focus command. Clicking the notification will restore the tmux pane.
+
+When `--notifier vde-notifier-app` is selected, vde-notifier calls the local Swift agent (`vde-notifier-app notify ...`) with action executable and arguments so notification clicks can restore the tmux pane without shell interpolation.
+
+## Using `vde-notifier-app` via Cask
+
+1. Install the app:
+
+```bash
+brew tap yuki-yano/vde-notifier
+brew install --cask yuki-yano/vde-notifier/vde-notifier-app
+```
+
+2. Verify runtime health:
+
+```bash
+vde-notifier-app doctor
+vde-notifier-app agent status
+```
+
+3. Send notifications through the Swift backend:
+
+```bash
+vde-notifier --notifier vde-notifier-app --title "Build finished" --message "Done" --sound Ping
+```
+
+4. Optional smoke test for the app binary directly:
+
+```bash
+vde-notifier-app notify --title "swift smoke" --message "click me" --sound Ping --action-exec /usr/bin/say --action-arg "clicked"
+```
 
 Environment overrides:
 
@@ -133,10 +166,49 @@ For Claude Code (Claude Desktop) projects, add a Stop hook to `~/.config/claude/
 }
 ```
 
+## Cask Release (GitHub Actions)
+
+`vde-notifier-app` cask distribution expects this fixed asset name on `yuki-yano/vde-notifier` releases:
+
+- `VdeNotifierApp.app.tar.gz`
+
+Release automation is defined in:
+
+- `.github/workflows/release-vde-notifier-app.yml`
+
+The workflow builds the Swift app and uploads/replaces `VdeNotifierApp.app.tar.gz` for the specified tag release.
+
+### Standard release flow
+
+1. Create and push a tag:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+2. Wait for `release-vde-notifier-app` workflow to complete.
+3. Confirm the release contains `VdeNotifierApp.app.tar.gz`.
+
+### Manual rerun flow
+
+If you need to regenerate the asset for an existing tag, run the workflow manually (`workflow_dispatch`) and set:
+
+- `tag`: `v0.1.0` (existing tag)
+
+### Local pre-check
+
+Before tagging, you can build the exact release asset locally:
+
+```bash
+pnpm run swift:release-asset
+```
+
 ## Troubleshooting
 
 - **No sound**: Ensure the sound name matches a file in `/System/Library/Sounds/` and is not set to `None`.
 - **Notification click does nothing**: Run with `--verbose` to inspect payload and focus command. Confirm `osascript` automation permission is granted.
+- **`vde-notifier-app doctor` stays `notDetermined`**: Rebuild the app bundle (`pnpm run swift:app`) and verify the signature identifier (`codesign -dv --verbose=4 build/VdeNotifierApp.app 2>&1 | rg '^Identifier='`) is `com.yuki-yano.vde-notifier-app.agent`.
 - **Slow focus switch**: By default tmux commands run first, then the terminal is frontmost. If delays persist, check that Notification Center closes promptly and that tmux socket is reachable.
 - **Running from `bunx dlx` or AI agents**: If launched via package runners, vde-notifier reuses the current `process.execPath` so focus mode can start without PATH access.
 
@@ -147,3 +219,6 @@ For Claude Code (Claude Desktop) projects, add a Stop hook to `~/.config/claude/
 - Test: `pnpm run test`
 - Build: `pnpm run build`
 - Watch build: `pnpm run dev`
+- Swift backend tests: `pnpm run swift:test`
+- Swift backend build: `pnpm run swift:build`
+- Build app bundle: `pnpm run swift:app`
