@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
 import { z } from "zod";
-import type { FocusCommand, FocusPayload } from "../types.js";
+import type { FocusCommand, FocusPayload } from "../types";
 
 const encode = (payload: FocusPayload): string => {
   const json = JSON.stringify(payload);

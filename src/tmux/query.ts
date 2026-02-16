@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import type { TmuxContext } from "../types.js";
+import type { TmuxContext } from "../types";
 
 const FORMAT_SEQUENCE = [
   "#{socket_path}",

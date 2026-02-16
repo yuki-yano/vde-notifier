@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { __internal } from "../notify/send.js";
+import { __internal } from "../notify/send";
 
 const { buildTerminalNotifierArgs } = __internal;
 

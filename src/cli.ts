@@ -14,13 +14,13 @@ import type {
   NotificationContent,
   TerminalProfile,
   TmuxContext
-} from "./types.js";
-import { assertRuntimeSupport, logBinaryReport, verifyRequiredBinaries } from "./utils/runtime.js";
-import { resolveTmuxContext } from "./tmux/query.js";
-import { resolveTerminalProfile, activateTerminal } from "./terminal/profile.js";
-import { sendNotification } from "./notify/send.js";
-import { buildFocusCommand, parseFocusPayload } from "./utils/payload.js";
-import { focusPane } from "./tmux/control.js";
+} from "./types";
+import { assertRuntimeSupport, logBinaryReport, verifyRequiredBinaries } from "./utils/runtime";
+import { resolveTmuxContext } from "./tmux/query";
+import { resolveTerminalProfile, activateTerminal } from "./terminal/profile";
+import { sendNotification } from "./notify/send";
+import { buildFocusCommand, parseFocusPayload } from "./utils/payload";
+import { focusPane } from "./tmux/control";
 
 const MODES = ["notify", "focus"] as const;
 

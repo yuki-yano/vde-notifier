@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolveTerminalProfile } from "./profile.js";
+import { resolveTerminalProfile } from "./profile";
 
 describe("resolveTerminalProfile", () => {
   it("prefers explicit key", () => {

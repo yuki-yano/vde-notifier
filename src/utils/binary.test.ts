@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtempSync, writeFileSync, chmodSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
-import { ensureBinary } from "./binary.js";
+import { ensureBinary } from "./binary";
 
 const createExecutable = (directory: string, name: string, mode = 0o755) => {
   const filePath = join(directory, name);

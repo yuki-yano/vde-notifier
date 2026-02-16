@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import type { NotificationOptions } from "../types.js";
+import type { NotificationOptions } from "../types";
 
 const DEFAULT_SOUND = "Glass";
 const MAX_MESSAGE_LENGTH = 100;

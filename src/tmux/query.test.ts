@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveTmuxContext } from "./query.js";
+import { resolveTmuxContext } from "./query";
 
 vi.mock("execa", () => ({
   execa: vi.fn()

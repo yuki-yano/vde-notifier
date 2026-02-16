@@ -5,7 +5,7 @@ vi.mock("execa", () => ({
 }));
 
 import { execa } from "execa";
-import { activateTerminal } from "./profile.js";
+import { activateTerminal } from "./profile";
 
 const execaMock = vi.mocked(execa);
 const result = (stdout: string) => ({ stdout }) as unknown as Awaited<ReturnType<typeof execa>>;

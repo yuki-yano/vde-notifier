@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildFocusCommand, parseFocusPayload } from "./payload.js";
-import type { FocusPayload } from "../types.js";
+import { buildFocusCommand, parseFocusPayload } from "./payload";
+import type { FocusPayload } from "../types";
 
 describe("focus command payload", () => {
   const samplePayload: FocusPayload = {

@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { EnvironmentReport } from "../types.js";
+import type { EnvironmentReport } from "../types";
 
 const mockEnsureBinary = vi.fn();
 
-vi.mock("./binary.js", () => ({
+vi.mock("./binary", () => ({
   ensureBinary: mockEnsureBinary
 }));
 
 describe("runtime utilities", () => {
-  let runtime: typeof import("./runtime.js");
+  let runtime: typeof import("./runtime");
   let originalNodeVersion: PropertyDescriptor | undefined;
   const restoreNodeVersion = () => {
     if (originalNodeVersion !== undefined) {
@@ -17,7 +17,7 @@ describe("runtime utilities", () => {
   };
 
   beforeEach(async () => {
-    runtime = await import("./runtime.js");
+    runtime = await import("./runtime");
     mockEnsureBinary.mockReset();
     originalNodeVersion = Object.getOwnPropertyDescriptor(process.versions, "node") ?? undefined;
   });

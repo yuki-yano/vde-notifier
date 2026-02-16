@@ -1,6 +1,6 @@
 import { yellow } from "kleur/colors";
-import type { EnvironmentReport, NotifierKind, RuntimeInfo } from "../types.js";
-import { ensureBinary } from "./binary.js";
+import type { EnvironmentReport, NotifierKind, RuntimeInfo } from "../types";
+import { ensureBinary } from "./binary";
 
 const detectRuntime = (): RuntimeInfo => ({
   nodeVersion: globalThis.process?.versions?.node,

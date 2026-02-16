@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import type { TmuxContext } from "../types.js";
+import type { TmuxContext } from "../types";
 const tmuxArgs = (context: TmuxContext) => ["-S", context.socketPath];
 
 export const focusPane = async (context: TmuxContext): Promise<void> => {

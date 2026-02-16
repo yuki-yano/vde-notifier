@@ -1,5 +1,5 @@
 import { execa } from "execa";
-import type { TerminalProfile } from "../types.js";
+import type { TerminalProfile } from "../types";
 
 const PROFILE_CATALOG: Record<string, { name: string; bundleId: string; aliases: readonly string[] }> = {
   terminal: {

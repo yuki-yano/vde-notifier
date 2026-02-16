@@ -2,45 +2,38 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
-import type {
-  CliOptions,
-  EnvironmentReport,
-  FocusCommand,
-  FocusPayload,
-  TerminalProfile,
-  TmuxContext
-} from "./types.js";
-import { __internal } from "./cli.js";
+import type { CliOptions, EnvironmentReport, FocusCommand, FocusPayload, TerminalProfile, TmuxContext } from "./types";
+import { __internal } from "./cli";
 
-vi.mock("./tmux/query.js", () => ({
+vi.mock("./tmux/query", () => ({
   resolveTmuxContext: vi.fn()
 }));
 
-vi.mock("./terminal/profile.js", () => ({
+vi.mock("./terminal/profile", () => ({
   resolveTerminalProfile: vi.fn(),
   activateTerminal: vi.fn()
 }));
 
-vi.mock("./notify/send.js", () => ({
+vi.mock("./notify/send", () => ({
   sendNotification: vi.fn()
 }));
 
-vi.mock("./utils/payload.js", () => ({
+vi.mock("./utils/payload", () => ({
   buildFocusCommand: vi.fn(),
   parseFocusPayload: vi.fn()
 }));
 
-vi.mock("./tmux/control.js", () => ({
+vi.mock("./tmux/control", () => ({
   focusPane: vi.fn()
 }));
 
-const resolveTmuxContextMock = vi.mocked(await import("./tmux/query.js")).resolveTmuxContext;
-const resolveTerminalProfileMock = vi.mocked(await import("./terminal/profile.js")).resolveTerminalProfile;
-const activateTerminalMock = vi.mocked(await import("./terminal/profile.js")).activateTerminal;
-const sendNotificationMock = vi.mocked(await import("./notify/send.js")).sendNotification;
-const buildFocusCommandMock = vi.mocked(await import("./utils/payload.js")).buildFocusCommand;
-const parseFocusPayloadMock = vi.mocked(await import("./utils/payload.js")).parseFocusPayload;
-const focusPaneMock = vi.mocked(await import("./tmux/control.js")).focusPane;
+const resolveTmuxContextMock = vi.mocked(await import("./tmux/query")).resolveTmuxContext;
+const resolveTerminalProfileMock = vi.mocked(await import("./terminal/profile")).resolveTerminalProfile;
+const activateTerminalMock = vi.mocked(await import("./terminal/profile")).activateTerminal;
+const sendNotificationMock = vi.mocked(await import("./notify/send")).sendNotification;
+const buildFocusCommandMock = vi.mocked(await import("./utils/payload")).buildFocusCommand;
+const parseFocusPayloadMock = vi.mocked(await import("./utils/payload")).parseFocusPayload;
+const focusPaneMock = vi.mocked(await import("./tmux/control")).focusPane;
 
 const sampleTmux: TmuxContext = {
   tmuxBin: "/opt/homebrew/bin/tmux",

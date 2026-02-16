@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { sendNotification, __internal } from "./send.js";
+import { sendNotification, __internal } from "./send";
 
 vi.mock("execa", () => ({
   execa: vi.fn()
