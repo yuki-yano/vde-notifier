@@ -166,7 +166,28 @@ For Claude Code (Claude Desktop) projects, add a Stop hook to `~/.config/claude/
 }
 ```
 
-## Cask Release (GitHub Actions)
+## Release Flows (GitHub Actions)
+
+NPM publish and app/cask release are separated.
+
+### NPM publish
+
+Workflow:
+
+- `.github/workflows/publish.yml`
+
+Trigger:
+
+- Push a tag with `npm-v*` (example: `npm-v0.1.1`)
+
+Example:
+
+```bash
+git tag npm-v0.1.1
+git push origin npm-v0.1.1
+```
+
+### App/cask release
 
 `vde-notifier-app` cask distribution expects this fixed asset name on `yuki-yano/vde-notifier` releases:
 
@@ -176,15 +197,15 @@ Release automation is defined in:
 
 - `.github/workflows/release-vde-notifier-app.yml`
 
-The workflow builds the Swift app and uploads/replaces `VdeNotifierApp.app.tar.gz` for the specified tag release.
+The workflow builds the Swift app and uploads/replaces `VdeNotifierApp.app.tar.gz` for the specified app tag release.
 
 ### Standard release flow
 
-1. Create and push a tag:
+1. Create and push an app tag:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag app-v0.1.1
+git push origin app-v0.1.1
 ```
 
 2. Wait for `release-vde-notifier-app` workflow to complete.
@@ -194,7 +215,7 @@ git push origin v0.1.0
 
 If you need to regenerate the asset for an existing tag, run the workflow manually (`workflow_dispatch`) and set:
 
-- `tag`: `v0.1.0` (existing tag)
+- `tag`: `app-v0.1.1` (existing app tag)
 
 ### Local pre-check
 

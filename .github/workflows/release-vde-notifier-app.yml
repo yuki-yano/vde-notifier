@@ -3,11 +3,11 @@ name: release-vde-notifier-app
 on:
   push:
     tags:
-      - "v*"
+      - "app-v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to release (e.g. v0.1.0)"
+        description: "Existing app tag to release (e.g. app-v0.1.1)"
         required: true
         type: string
 
