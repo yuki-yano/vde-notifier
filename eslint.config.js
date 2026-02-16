@@ -5,7 +5,7 @@ const TYPE_FILES = ["**/*.ts"];
 
 export default [
   {
-    ignores: ["dist", "node_modules", "tsdown.config.ts", "vitest.config.ts"]
+    ignores: ["dist", "coverage", "node_modules", "tsdown.config.ts", "vitest.config.ts"]
   },
   {
     files: TYPE_FILES,

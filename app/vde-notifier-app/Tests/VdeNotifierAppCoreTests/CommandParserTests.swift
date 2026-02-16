@@ -66,4 +66,9 @@ final class CommandParserTests: XCTestCase {
       XCTAssertEqual(error, .unknownFlag("--foo"))
     }
   }
+
+  func testParseVersion() throws {
+    XCTAssertEqual(try parseCommandLine(["--version"]), .version)
+    XCTAssertEqual(try parseCommandLine(["-v"]), .version)
+  }
 }

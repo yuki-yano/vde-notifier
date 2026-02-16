@@ -24,6 +24,11 @@ let package = Package(
       name: "VdeNotifierAppCoreTests",
       dependencies: ["VdeNotifierAppCore"],
       path: "Tests/VdeNotifierAppCoreTests"
+    ),
+    .testTarget(
+      name: "VdeNotifierAppTests",
+      dependencies: ["VdeNotifierApp", "VdeNotifierAppCore"],
+      path: "Tests/VdeNotifierAppTests"
     )
   ]
 )

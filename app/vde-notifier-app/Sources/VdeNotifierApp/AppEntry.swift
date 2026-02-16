@@ -42,6 +42,8 @@ struct VdeNotifierAppMain {
         runDoctor()
       case .help:
         printHelp()
+      case .version:
+        printVersion()
       }
     } catch let error as CommandParseError {
       fputs("vde-notifier-app: \(error.description)\n", stderr)
@@ -176,7 +178,24 @@ struct VdeNotifierAppMain {
         vde-notifier-app agent start
         vde-notifier-app agent status
         vde-notifier-app doctor
+        vde-notifier-app --version
       """
     )
+  }
+
+  private static func printVersion() {
+    print(resolveVersion())
+  }
+
+  private static func resolveVersion() -> String {
+    let bundleVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    if let bundleVersion, !bundleVersion.isEmpty {
+      return bundleVersion
+    }
+    let buildVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+    if let buildVersion, !buildVersion.isEmpty {
+      return buildVersion
+    }
+    return "0.0.0"
   }
 }

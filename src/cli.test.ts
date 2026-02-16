@@ -344,7 +344,19 @@ describe("resolveCodexSound", () => {
 });
 
 describe("loadCodexContext", () => {
-  it("prefers stdin payload over arguments", async () => {
+  it("prefers argument payload over stdin input", async () => {
+    const json = JSON.stringify({
+      message: "From stdin",
+      sound: "None"
+    });
+    const rawArgs = ["--codex", '{"message":"From arg","sound":"Glass"}'];
+    const result = await __internal.loadCodexContext(rawArgs, json);
+    expect(result?.message).toBe("From arg");
+    expect(result?.sound).toBe("Glass");
+  });
+
+  it("uses stdin payload when argument and environment payloads are absent", async () => {
+    process.env.CODEX_NOTIFICATION_PAYLOAD = "";
     const json = JSON.stringify({
       message: "From stdin",
       sound: "None"
@@ -379,6 +391,13 @@ describe("loadCodexContext", () => {
   it("falls back to environment variable when neither stdin nor args provide JSON", async () => {
     process.env.CODEX_NOTIFICATION_PAYLOAD = '{"message":"From env","sound":"Ping"}';
     const result = await __internal.loadCodexContext([], "");
+    expect(result?.message).toBe("From env");
+    expect(result?.sound).toBe("Ping");
+  });
+
+  it("prefers environment payload over stdin input when argument payload is absent", async () => {
+    process.env.CODEX_NOTIFICATION_PAYLOAD = '{"message":"From env","sound":"Ping"}';
+    const result = await __internal.loadCodexContext([], '{"message":"From stdin","sound":"None"}');
     expect(result?.message).toBe("From env");
     expect(result?.sound).toBe("Ping");
   });

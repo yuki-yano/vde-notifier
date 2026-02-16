@@ -36,6 +36,17 @@ jobs:
       - name: Verify tag exists
         run: git rev-parse "${{ steps.release_tag.outputs.value }}" >/dev/null
 
+      - name: Validate app tag format
+        run: |
+          TAG="${{ steps.release_tag.outputs.value }}"
+          if [[ ! "${TAG}" =~ ^app-v[0-9]+(\.[0-9]+)*$ ]]; then
+            echo "unexpected app tag format: ${TAG}" >&2
+            exit 1
+          fi
+
+      - name: Checkout release tag commit
+        run: git checkout --detach "${{ steps.release_tag.outputs.value }}"
+
       - name: Build app release asset
         run: |
           TAG="${{ steps.release_tag.outputs.value }}"
@@ -54,11 +65,6 @@ jobs:
         id: cask_metadata
         run: |
           TAG="${{ steps.release_tag.outputs.value }}"
-          if [[ "${TAG}" != app-v* ]]; then
-            echo "unexpected app tag format: ${TAG}" >&2
-            exit 1
-          fi
-
           VERSION="${TAG#app-v}"
           SHA256="$(shasum -a 256 VdeNotifierApp.app.tar.gz | awk '{ print $1 }')"
 

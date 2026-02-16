@@ -458,17 +458,20 @@ const loadCodexContext = async (
   rawArgs: readonly string[],
   stdinOverride?: string
 ): Promise<CodexContext | undefined> => {
-  const rawInput = typeof stdinOverride === "string" ? stdinOverride : await readStdin();
   const envPayload = asNonEmptyString(processEnv.CODEX_NOTIFICATION_PAYLOAD);
   const argPayload = extractCodexArg(rawArgs);
-  const fallback = rawInput.length > 0 ? rawInput : (argPayload ?? envPayload ?? "");
+  let payload = argPayload ?? envPayload;
+  if (payload === undefined) {
+    const rawInput = typeof stdinOverride === "string" ? stdinOverride : await readStdin();
+    payload = rawInput.length > 0 ? rawInput : undefined;
+  }
 
-  if (fallback.length === 0) {
+  if (payload === undefined || payload.length === 0) {
     return undefined;
   }
 
   try {
-    const parsed = JSON.parse(fallback);
+    const parsed = JSON.parse(payload);
     if (parsed === null || typeof parsed !== "object") {
       return undefined;
     }

@@ -52,4 +52,5 @@ vde-notifier-app agent run
 vde-notifier-app agent start
 vde-notifier-app agent status
 vde-notifier-app doctor
+vde-notifier-app --version
 ```

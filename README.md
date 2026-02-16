@@ -56,7 +56,7 @@ vde-notifier --title "Build finished" --message "webpack completed"
 - `--title <string>`: Override the notification title. Defaults to `[session] window.pane (%paneId)`.
 - `--message <string>`: Override the notification body. Defaults to `cmd: <paneCurrentCommand> | tty: <clientTTY>`.
 - `--sound <name>`: macOS system sound (for example, `Glass`, `Ping`). Use `None` for silence.
-- `--codex`: Consume Codex-style JSON (see below) from a trailing argument (or `CODEX_NOTIFICATION_PAYLOAD`) and build the notification from it.
+- `--codex`: Consume Codex-style JSON (see below) from a trailing argument, `CODEX_NOTIFICATION_PAYLOAD`, or stdin (in that priority order) and build the notification from it.
 - `--claude`: Consume Claude Code JSON piped on stdin (supports `transcript_path` to pull the latest assistant reply).
 - `--terminal <profile>`: Force a terminal profile (alacritty, wezterm, ghostty, etc.).
 - `--term-bundle-id <bundleId>`: Override the bundle identifier when auto detection is insufficient.
@@ -66,6 +66,8 @@ vde-notifier --title "Build finished" --message "webpack completed"
 - `--log-file <path>`: Appends the same JSON diagnostics to the given file (one JSON object per line). Also propagates to focus-mode invocations.
 - `--help`, `-h`: Show usage.
 - `--version`, `-v`: Show CLI version.
+
+Short option bundling (for example, `-hv`) is intentionally unsupported.
 
 When `--notifier swiftdialog` is selected, vde-notifier plays the requested sound locally and then sends `dialog --notification ...` with a primary action wired to the focus command. Clicking the notification will restore the tmux pane.
 
@@ -133,7 +135,7 @@ Many hosted IDE agents run inside tmux. You can add a notification step after lo
 
 vde-notifier hydrates notifications from agent payloads in two ways:
 
-- `--codex`: pass a Codex-style JSON payload as the final argument (the format used by hosted Codex agents). You can also preload the same JSON via `CODEX_NOTIFICATION_PAYLOAD`.
+- `--codex`: pass a Codex-style JSON payload as the final argument (the format used by hosted Codex agents). You can also preload the same JSON via `CODEX_NOTIFICATION_PAYLOAD`; if neither is present, stdin is used.
 - `--claude`: pipe Claude Code's JSON payload to stdin. If the payload contains `transcript_path`, vde-notifier opens the referenced transcript JSONL file and uses the latest assistant message.
 
 Codex notifications always use the repository-scoped title `Codex: <repo-name>`, ignoring payload-provided titles. Claude notifications fall back to `Claude: <repo-name>` when no explicit title is supplied.

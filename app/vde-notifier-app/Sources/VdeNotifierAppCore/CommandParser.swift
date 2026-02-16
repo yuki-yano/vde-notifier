@@ -29,6 +29,7 @@ public enum ParsedCommand: Equatable {
   case agentStatus
   case doctor
   case help
+  case version
 }
 
 public enum CommandParseError: Error, Equatable, CustomStringConvertible {
@@ -71,6 +72,8 @@ public func parseCommandLine(_ arguments: [String]) throws -> ParsedCommand {
     return .doctor
   case "--help", "-h", "help":
     return .help
+  case "--version", "-v", "version":
+    return .version
   default:
     throw CommandParseError.unknownCommand(head)
   }
