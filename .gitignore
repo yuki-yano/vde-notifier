@@ -5,3 +5,4 @@ app/vde-notifier-app/build
 build/VdeNotifierApp.app
 build/vde-notifier-app
 VdeNotifierApp.app.tar.gz
+coverage

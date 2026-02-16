@@ -254,6 +254,11 @@ describe("parseArguments", () => {
     expect(options.mode).toBe("focus");
   });
 
+  it("treats short help flag as value when consumed by --message", () => {
+    const options = __internal.parseArguments(["--message", "-h"]);
+    expect(options.message).toBe("-h");
+  });
+
   it("enables Claude mode flag", () => {
     const options = __internal.parseArguments(["--claude"]);
     expect(options.claude).toBe(true);
@@ -301,6 +306,11 @@ describe("control options", () => {
   it("detects help flags", () => {
     expect(__internal.resolveControlOptions(["--help"]).help).toBe(true);
     expect(__internal.resolveControlOptions(["-h"]).help).toBe(true);
+  });
+
+  it("does not treat consumed values as control flags", () => {
+    expect(__internal.resolveControlOptions(["--message", "-h"]).help).toBe(false);
+    expect(__internal.resolveControlOptions(["--title", "-v"]).version).toBe(false);
   });
 
   it("detects version flags", () => {

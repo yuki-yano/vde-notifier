@@ -107,9 +107,10 @@ struct VdeNotifierAppMain {
   }
 
   private static func runAgentStatus() {
+    let socketPath = AppPaths.socketURL().path
     let status = [
-      "running": socketExistsAndReachable(path: AppPaths.socketURL().path),
-      "socket": true
+      "running": socketExistsAndReachable(path: socketPath),
+      "socket": FileManager.default.fileExists(atPath: socketPath)
     ] as [String: Any]
     printJSON(status)
   }

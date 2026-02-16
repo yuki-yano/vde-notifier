@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+
 const readStdin = async () => {
   const chunks = [];
   for await (const chunk of process.stdin) {
@@ -6,7 +8,7 @@ const readStdin = async () => {
   return chunks.join("").trim();
 };
 
-const parsePackOutput = (raw) => {
+export const parsePackOutput = (raw) => {
   let parsed;
   try {
     parsed = JSON.parse(raw);
@@ -21,14 +23,14 @@ const parsePackOutput = (raw) => {
   return parsed[0];
 };
 
-const toFileMap = (pack) => {
+export const toFileMap = (pack) => {
   if (!Array.isArray(pack.files)) {
     throw new Error("npm pack JSON output did not include a files array.");
   }
   return new Map(pack.files.map((file) => [file.path, file]));
 };
 
-const assertRequiredFiles = (fileMap, requiredPaths) => {
+export const assertRequiredFiles = (fileMap, requiredPaths) => {
   for (const requiredPath of requiredPaths) {
     if (!fileMap.has(requiredPath)) {
       throw new Error(`npm package is missing required file: ${requiredPath}`);
@@ -36,7 +38,7 @@ const assertRequiredFiles = (fileMap, requiredPaths) => {
   }
 };
 
-const assertExecutableBin = (fileMap, path) => {
+export const assertExecutableBin = (fileMap, path) => {
   const file = fileMap.get(path);
   if (file === undefined || typeof file.mode !== "number") {
     throw new Error(`Unable to verify mode for ${path}`);
@@ -46,7 +48,7 @@ const assertExecutableBin = (fileMap, path) => {
   }
 };
 
-const assertNoUnexpectedSources = (pack, disallowedPrefixes) => {
+export const assertNoUnexpectedSources = (pack, disallowedPrefixes) => {
   const leaked = pack.files
     .map((file) => file.path)
     .filter((path) => disallowedPrefixes.some((prefix) => path.startsWith(prefix)));
@@ -56,8 +58,7 @@ const assertNoUnexpectedSources = (pack, disallowedPrefixes) => {
   }
 };
 
-const main = async () => {
-  const raw = await readStdin();
+export const runPackCheck = (raw) => {
   if (raw.length === 0) {
     throw new Error("Received empty output from npm pack.");
   }
@@ -69,11 +70,27 @@ const main = async () => {
   assertExecutableBin(fileMap, "dist/cli.js");
   assertNoUnexpectedSources(pack, ["src/", "app/", ".github/", ".agents/", "tmp/"]);
 
-  console.log(`npm pack check passed: ${pack.name}@${pack.version} (${pack.entryCount} files)`);
+  return `npm pack check passed: ${pack.name}@${pack.version} (${pack.entryCount} files)`;
 };
 
-main().catch((error) => {
-  const message = error instanceof Error ? error.message : String(error);
-  console.error(message);
-  process.exit(1);
-});
+export const main = async () => {
+  const raw = await readStdin();
+  const message = runPackCheck(raw);
+  console.log(message);
+};
+
+const isMainModule = () => {
+  const entry = process.argv[1];
+  if (typeof entry !== "string" || entry.length === 0) {
+    return false;
+  }
+  return import.meta.url === pathToFileURL(entry).href;
+};
+
+if (isMainModule()) {
+  main().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(message);
+    process.exit(1);
+  });
+}

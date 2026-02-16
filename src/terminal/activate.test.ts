@@ -57,4 +57,17 @@ describe("activateTerminal", () => {
 
     await expect(activateTerminal("org.alacritty")).rejects.toThrow("frontmost failed");
   });
+
+  it("escapes bundle identifiers before embedding in AppleScript", async () => {
+    execaMock.mockResolvedValue(result(""));
+    const bundleId = 'com.example."evil"\nterm\\id';
+
+    await activateTerminal(bundleId);
+
+    const activationScript = (execaMock.mock.calls[0][1] as string[])[1];
+    expect(activationScript).toBe('tell application id "com.example.\\"evil\\" term\\\\id" to activate');
+
+    const frontmostScript = (execaMock.mock.calls[1][1] as string[])[1];
+    expect(frontmostScript).toContain('if bundle identifier of proc is "com.example.\\"evil\\" term\\\\id" then');
+  });
 });

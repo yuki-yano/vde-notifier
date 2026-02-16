@@ -246,14 +246,6 @@ const resolveCliVersion = (): string => {
   return "0.0.0";
 };
 
-const resolveControlOptions = (args: readonly string[]): { readonly help: boolean; readonly version: boolean } => {
-  const parsedArgs = parseArgs([...args], cliArgsDef);
-  return {
-    help: parsedArgs.help === true,
-    version: parsedArgs.version === true
-  };
-};
-
 const resolveProgramName = (): string => {
   const entry = asNonEmptyString(argv[1]);
   if (typeof entry === "string") {
@@ -272,18 +264,35 @@ const failCliOptionParse = (message: string): never => {
   throw new Error(`Failed to parse CLI options:\n${message}`);
 };
 
+const controlLongOptions = new Set<string>(["--help", "--version"]);
 const knownLongOptions = new Set<string>([...optionsWithValue, ...flagOnlyOptions, "--help", "--version"]);
 const knownShortOptions = new Set<string>(["-h", "-v"]);
 
-const validateRawArgs = (rawArgs: readonly string[]): void => {
+type ControlOptions = {
+  readonly help: boolean;
+  readonly version: boolean;
+};
+
+type ParsedRawArgs = {
+  readonly normalizedArgs: readonly string[];
+  readonly controls: ControlOptions;
+};
+
+const parseRawArgs = (rawArgs: readonly string[]): ParsedRawArgs => {
+  const normalizedArgs: string[] = [];
+  let help = false;
+  let version = false;
+
   for (let index = 0; index < rawArgs.length; index += 1) {
     const arg = rawArgs[index];
 
     if (arg === "--") {
-      return;
+      normalizedArgs.push(arg, ...rawArgs.slice(index + 1));
+      break;
     }
 
     if (!arg.startsWith("-")) {
+      normalizedArgs.push(arg);
       continue;
     }
 
@@ -299,6 +308,7 @@ const validateRawArgs = (rawArgs: readonly string[]): void => {
         if (!flagOnlyOptions.has(flagLabel)) {
           failCliOptionParse(`Unknown boolean option: --no-${key}`);
         }
+        normalizedArgs.push(arg);
         continue;
       }
 
@@ -308,16 +318,30 @@ const validateRawArgs = (rawArgs: readonly string[]): void => {
       if (!knownLongOptions.has(flagLabel)) {
         failCliOptionParse(`Unknown option: ${flagLabel}`);
       }
-      if (flagOnlyOptions.has(flagLabel) && inlineValue !== undefined) {
+      if ((flagOnlyOptions.has(flagLabel) || controlLongOptions.has(flagLabel)) && inlineValue !== undefined) {
         failCliOptionParse(`Option ${flagLabel} does not take a value.`);
       }
-      if (optionsWithValue.has(flagLabel) && inlineValue === undefined) {
+      if (optionsWithValue.has(flagLabel)) {
+        if (inlineValue !== undefined) {
+          normalizedArgs.push(arg);
+          continue;
+        }
         const next = rawArgs[index + 1];
         if (typeof next !== "string" || next.startsWith("--")) {
           failCliOptionParse(`Option ${flagLabel} requires a value.`);
         }
+        normalizedArgs.push(`${flagLabel}=${next}`);
         index += 1;
+        continue;
       }
+
+      if (flagLabel === "--help") {
+        help = true;
+      }
+      if (flagLabel === "--version") {
+        version = true;
+      }
+      normalizedArgs.push(flagLabel);
 
       continue;
     }
@@ -325,7 +349,26 @@ const validateRawArgs = (rawArgs: readonly string[]): void => {
     if (!knownShortOptions.has(arg)) {
       failCliOptionParse(`Unknown short option: ${arg}`);
     }
+    if (arg === "-h") {
+      help = true;
+    }
+    if (arg === "-v") {
+      version = true;
+    }
+    normalizedArgs.push(arg);
   }
+
+  return {
+    normalizedArgs,
+    controls: {
+      help,
+      version
+    }
+  };
+};
+
+const resolveControlOptions = (args: readonly string[]): ControlOptions => {
+  return parseRawArgs(args).controls;
 };
 
 const cliArgsDef = {
@@ -690,8 +733,8 @@ const cliSchema = z.object({
 });
 
 const parseArguments = (args: readonly string[]): CliOptions => {
-  validateRawArgs(args);
-  const parsedArgs = parseArgs([...args], cliArgsDef);
+  const parsedRawArgs = parseRawArgs(args);
+  const parsedArgs = parseArgs([...parsedRawArgs.normalizedArgs], cliArgsDef);
 
   const optionLogFile = asNonEmptyString(parsedArgs["log-file"]);
   const envLogFile = asNonEmptyString(processEnv.VDE_NOTIFIER_LOG_FILE);

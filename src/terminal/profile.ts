@@ -133,7 +133,14 @@ export const resolveTerminalProfile = ({ explicitKey, bundleOverride, env }: Res
   return buildProfile(DEFAULT_KEY, "default");
 };
 
-const buildFrontmostScript = (bundleId: string): string => `
+const quoteAppleScriptString = (value: string): string => {
+  const sanitized = value.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll(/\r?\n/g, " ");
+  return `"${sanitized}"`;
+};
+
+const buildFrontmostScript = (bundleId: string): string => {
+  const quotedBundleId = quoteAppleScriptString(bundleId);
+  return `
 tell application "System Events"
   try
     if name of processes contains "NotificationCenter" then
@@ -142,7 +149,7 @@ tell application "System Events"
   end try
   repeat with proc in processes
     try
-      if bundle identifier of proc is "${bundleId}" then
+      if bundle identifier of proc is ${quotedBundleId} then
         set frontmost of proc to true
         exit repeat
       end if
@@ -150,12 +157,14 @@ tell application "System Events"
   end repeat
 end tell
 `;
+};
 
 export const activateTerminal = async (bundleId: string): Promise<void> => {
   let primarySucceeded = false;
+  const quotedBundleId = quoteAppleScriptString(bundleId);
 
   try {
-    await execa("/usr/bin/osascript", ["-e", `tell application id "${bundleId}" to activate`]);
+    await execa("/usr/bin/osascript", ["-e", `tell application id ${quotedBundleId} to activate`]);
     primarySucceeded = true;
   } catch {
     /* ignore – fall back to frontmost script */

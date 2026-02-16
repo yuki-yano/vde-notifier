@@ -7,11 +7,32 @@ const detectRuntime = (): RuntimeInfo => ({
   bunVersion: (globalThis as unknown as { Bun?: { version: string } }).Bun?.version
 });
 
+const MINIMUM_NODE_MAJOR = 22;
+
+const parseNodeMajorVersion = (version: string): number | undefined => {
+  const match = /^(\d+)(?:\.\d+){0,2}$/.exec(version.trim());
+  if (match === null) {
+    return undefined;
+  }
+  return Number.parseInt(match[1], 10);
+};
+
 export const assertRuntimeSupport = (): void => {
   const runtime = detectRuntime();
   const hasNode = typeof runtime.nodeVersion === "string" && runtime.nodeVersion.length > 0;
   const hasBun = typeof runtime.bunVersion === "string" && runtime.bunVersion.length > 0;
-  if (!hasNode && !hasBun) {
+
+  if (hasNode) {
+    const majorVersion = parseNodeMajorVersion(runtime.nodeVersion);
+    if (majorVersion === undefined || majorVersion < MINIMUM_NODE_MAJOR) {
+      throw new Error(
+        `Unsupported Node.js runtime: ${runtime.nodeVersion}. Please run with Node.js >= ${MINIMUM_NODE_MAJOR} or Bun.`
+      );
+    }
+    return;
+  }
+
+  if (!hasBun) {
     throw new Error("Unsupported runtime. Please run under Node.js or Bun.");
   }
 };

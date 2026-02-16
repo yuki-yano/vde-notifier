@@ -34,6 +34,18 @@ describe("runtime utilities", () => {
       expect(() => runtime.assertRuntimeSupport()).toThrow("Unsupported runtime");
     });
 
+    it("throws when Node major version is below minimum requirement", () => {
+      Object.defineProperty(process.versions, "node", { value: "20.11.1", configurable: true, enumerable: true });
+
+      expect(() => runtime.assertRuntimeSupport()).toThrow("Node.js >= 22");
+    });
+
+    it("passes when Node major version meets minimum requirement", () => {
+      Object.defineProperty(process.versions, "node", { value: "22.0.0", configurable: true, enumerable: true });
+
+      expect(() => runtime.assertRuntimeSupport()).not.toThrow();
+    });
+
     it("passes when Bun is available even without Node", () => {
       Object.defineProperty(process.versions, "node", { value: undefined, configurable: true, enumerable: true });
       (globalThis as unknown as { Bun: { version: string } }).Bun = { version: "1.1.0" };
