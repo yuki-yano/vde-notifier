@@ -43,21 +43,38 @@ describe("runtime utilities", () => {
   });
 
   describe("verifyRequiredBinaries", () => {
-    it("ensures tmux, terminal-notifier, and osascript binaries", async () => {
+    it("ensures tmux, vde-notifier-app, and osascript binaries by default", async () => {
       mockEnsureBinary.mockResolvedValueOnce("/usr/bin/tmux");
-      mockEnsureBinary.mockResolvedValueOnce("/usr/bin/terminal-notifier");
+      mockEnsureBinary.mockResolvedValueOnce("/opt/homebrew/bin/vde-notifier-app");
       mockEnsureBinary.mockResolvedValueOnce("/usr/bin/osascript");
 
       const report = await runtime.verifyRequiredBinaries();
 
       expect(mockEnsureBinary).toHaveBeenCalledTimes(3);
       expect(mockEnsureBinary).toHaveBeenNthCalledWith(1, "tmux");
-      expect(mockEnsureBinary).toHaveBeenNthCalledWith(2, "terminal-notifier");
+      expect(mockEnsureBinary).toHaveBeenNthCalledWith(2, "vde-notifier-app");
       expect(mockEnsureBinary).toHaveBeenNthCalledWith(3, "osascript");
       expect(report.binaries.tmux).toBe("/usr/bin/tmux");
-      expect(report.binaries.notifier).toBe("/usr/bin/terminal-notifier");
-      expect(report.binaries.notifierKind).toBe("terminal-notifier");
+      expect(report.binaries.notifier).toBe("/opt/homebrew/bin/vde-notifier-app");
+      expect(report.binaries.notifierKind).toBe("vde-notifier-app");
       expect(report.binaries.osascript).toBe("/usr/bin/osascript");
+    });
+
+    it("prints installation guidance when default notifier is missing", async () => {
+      mockEnsureBinary.mockResolvedValueOnce("/usr/bin/tmux");
+      mockEnsureBinary.mockRejectedValueOnce(new Error("Unable to locate command on PATH: vde-notifier-app"));
+
+      let thrown: unknown;
+      try {
+        await runtime.verifyRequiredBinaries();
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(thrown).toBeInstanceOf(Error);
+      const message = (thrown as Error).message;
+      expect(message).toContain("Default notifier `vde-notifier-app` is not installed.");
+      expect(message).toContain("brew install --cask yuki-yano/vde-notifier/vde-notifier-app");
     });
 
     it("supports selecting swiftDialog as notifier", async () => {
@@ -71,6 +88,19 @@ describe("runtime utilities", () => {
       expect(mockEnsureBinary).toHaveBeenNthCalledWith(2, "dialog");
       expect(report.binaries.notifier).toBe("/usr/local/bin/dialog");
       expect(report.binaries.notifierKind).toBe("swiftdialog");
+    });
+
+    it("supports selecting vde-notifier-app as notifier", async () => {
+      mockEnsureBinary.mockResolvedValueOnce("/usr/bin/tmux");
+      mockEnsureBinary.mockResolvedValueOnce("/opt/homebrew/bin/vde-notifier-app");
+      mockEnsureBinary.mockResolvedValueOnce("/usr/bin/osascript");
+
+      const report = await runtime.verifyRequiredBinaries("vde-notifier-app");
+
+      expect(mockEnsureBinary).toHaveBeenCalledTimes(3);
+      expect(mockEnsureBinary).toHaveBeenNthCalledWith(2, "vde-notifier-app");
+      expect(report.binaries.notifier).toBe("/opt/homebrew/bin/vde-notifier-app");
+      expect(report.binaries.notifierKind).toBe("vde-notifier-app");
     });
   });
 

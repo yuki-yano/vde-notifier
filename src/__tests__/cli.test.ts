@@ -266,14 +266,19 @@ describe("parseArguments", () => {
     expect(options.claude).toBe(true);
   });
 
-  it("defaults notifier to terminal-notifier", () => {
+  it("defaults notifier to vde-notifier-app", () => {
     const options = __internal.parseArguments([]);
-    expect(options.notifier).toBe("terminal-notifier");
+    expect(options.notifier).toBe("vde-notifier-app");
   });
 
   it("allows selecting swiftDialog notifier", () => {
     const options = __internal.parseArguments(["--notifier", "swiftdialog"]);
     expect(options.notifier).toBe("swiftdialog");
+  });
+
+  it("allows selecting vde-notifier-app notifier", () => {
+    const options = __internal.parseArguments(["--notifier", "vde-notifier-app"]);
+    expect(options.notifier).toBe("vde-notifier-app");
   });
 });
 

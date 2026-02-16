@@ -475,7 +475,7 @@ const resolveNotificationDetails = (
 
 const notifierSchema = z.unknown().transform<NotifierKind>((value) => {
   if (value === undefined || value === null) {
-    return "terminal-notifier";
+    return "vde-notifier-app";
   }
   if (typeof value !== "string") {
     throw new Error("Notifier must be a string");
@@ -487,6 +487,9 @@ const notifierSchema = z.unknown().transform<NotifierKind>((value) => {
   }
   if (normalized === "swiftdialog" || normalized === "dialog") {
     return "swiftdialog";
+  }
+  if (normalized === "vde-notifier-app" || normalized === "vde-notifier") {
+    return "vde-notifier-app";
   }
 
   throw new Error(`Unsupported notifier: ${value}`);

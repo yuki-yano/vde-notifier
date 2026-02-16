@@ -16,16 +16,39 @@ export const assertRuntimeSupport = (): void => {
   }
 };
 
-export const verifyRequiredBinaries = async (
-  notifier: NotifierKind = "terminal-notifier"
-): Promise<EnvironmentReport> => {
-  const notifierCommand = notifier === "swiftdialog" ? "dialog" : "terminal-notifier";
+const DEFAULT_NOTIFIER: NotifierKind = "vde-notifier-app";
 
-  const [tmuxPath, notifierPath, osascriptPath] = await Promise.all([
-    ensureBinary("tmux"),
-    ensureBinary(notifierCommand),
-    ensureBinary("osascript")
-  ]);
+const defaultNotifierInstallGuide = (): string => {
+  return [
+    "Default notifier `vde-notifier-app` is not installed.",
+    "Install it with:",
+    "  brew tap yuki-yano/vde-notifier",
+    "  brew install --cask yuki-yano/vde-notifier/vde-notifier-app",
+    "",
+    "Or override notifier explicitly, for example:",
+    "  --notifier terminal-notifier"
+  ].join("\n");
+};
+
+export const verifyRequiredBinaries = async (notifier: NotifierKind = DEFAULT_NOTIFIER): Promise<EnvironmentReport> => {
+  const notifierCommandByKind: Record<NotifierKind, string> = {
+    "terminal-notifier": "terminal-notifier",
+    swiftdialog: "dialog",
+    "vde-notifier-app": "vde-notifier-app"
+  };
+  const notifierCommand = notifierCommandByKind[notifier];
+
+  const tmuxPath = await ensureBinary("tmux");
+  let notifierPath: string;
+  try {
+    notifierPath = await ensureBinary(notifierCommand);
+  } catch (error) {
+    if (notifier === DEFAULT_NOTIFIER) {
+      throw new Error(defaultNotifierInstallGuide());
+    }
+    throw error;
+  }
+  const osascriptPath = await ensureBinary("osascript");
 
   const report: EnvironmentReport = {
     runtime: detectRuntime(),

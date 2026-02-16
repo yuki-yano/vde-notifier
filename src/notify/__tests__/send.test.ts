@@ -124,6 +124,36 @@ describe("sendNotification", () => {
     expect(command).toBe("/usr/local/bin/dialog");
   });
 
+  it("runs vde-notifier-app with action executable and args", async () => {
+    await sendNotification({
+      notifierKind: "vde-notifier-app",
+      notifierPath: "/opt/homebrew/bin/vde-notifier-app",
+      title: "Done",
+      message: "Build finished",
+      focusCommand,
+      sound: "Ping"
+    });
+
+    expect(execaMock).toHaveBeenCalledTimes(1);
+    expect(execaMock).toHaveBeenCalledWith("/opt/homebrew/bin/vde-notifier-app", [
+      "notify",
+      "--title",
+      "Done",
+      "--message",
+      "Build finished",
+      "--sound",
+      "Ping",
+      "--action-exec",
+      focusCommand.executable,
+      "--action-arg",
+      "/opt/homebrew/bin/vde-notifier",
+      "--action-arg",
+      "--mode",
+      "--action-arg",
+      "focus"
+    ]);
+  });
+
   it("adds a leading space when message starts with hyphen for terminal-notifier", () => {
     const args = __internal.buildTerminalNotifierArgs({
       notifierKind: "terminal-notifier",
@@ -150,5 +180,20 @@ describe("sendNotification", () => {
 
     const messageIndex = args.indexOf("--message") + 1;
     expect(args[messageIndex]).toBe(" - bullet");
+  });
+
+  it("passes None sound explicitly to vde-notifier-app", () => {
+    const args = __internal.buildVdeNotifierAppArgs({
+      notifierKind: "vde-notifier-app",
+      notifierPath: "/opt/homebrew/bin/vde-notifier-app",
+      title: "Done",
+      message: "Build finished",
+      focusCommand,
+      sound: "None"
+    });
+
+    expect(args).toEqual(
+      expect.arrayContaining(["notify", "--sound", "none", "--action-exec", focusCommand.executable])
+    );
   });
 });

@@ -77,6 +77,34 @@ const buildSwiftDialogArgs = ({ title, message, focusCommand }: NotificationOpti
   focusCommand.command
 ];
 
+const resolveVdeNotifierAppSound = (sound?: string): string => {
+  const candidate = (sound ?? DEFAULT_SOUND).trim();
+  if (candidate === "" || candidate.toLowerCase() === "none") {
+    return "none";
+  }
+  return candidate;
+};
+
+const buildVdeNotifierAppArgs = ({ title, message, focusCommand, sound }: NotificationOptions): string[] => {
+  const args = [
+    "notify",
+    "--title",
+    title,
+    "--message",
+    truncateMessage(message),
+    "--sound",
+    resolveVdeNotifierAppSound(sound),
+    "--action-exec",
+    focusCommand.executable
+  ];
+
+  for (const arg of focusCommand.args) {
+    args.push("--action-arg", arg);
+  }
+
+  return args;
+};
+
 const sendViaTerminalNotifier = async (options: NotificationOptions): Promise<void> => {
   const args = buildTerminalNotifierArgs(options);
   await execa(options.notifierPath, args);
@@ -88,9 +116,18 @@ const sendViaSwiftDialog = async (options: NotificationOptions): Promise<void> =
   await execa(options.notifierPath, args);
 };
 
+const sendViaVdeNotifierApp = async (options: NotificationOptions): Promise<void> => {
+  const args = buildVdeNotifierAppArgs(options);
+  await execa(options.notifierPath, args);
+};
+
 export const sendNotification = async (options: NotificationOptions): Promise<void> => {
   if (options.notifierKind === "swiftdialog") {
     await sendViaSwiftDialog(options);
+    return;
+  }
+  if (options.notifierKind === "vde-notifier-app") {
+    await sendViaVdeNotifierApp(options);
     return;
   }
 
@@ -100,13 +137,16 @@ export const sendNotification = async (options: NotificationOptions): Promise<vo
 export const __internal = {
   buildTerminalNotifierArgs,
   buildSwiftDialogArgs,
+  buildVdeNotifierAppArgs,
   sendViaSwiftDialog,
+  sendViaVdeNotifierApp,
   sendViaTerminalNotifier,
   DEFAULT_SOUND,
   MAX_MESSAGE_LENGTH,
   SWIFT_DIALOG_BUTTON_TEXT,
   SWIFT_DIALOG_SOUND_PLAYER,
   resolveSoundRequest,
+  resolveVdeNotifierAppSound,
   resolveSoundResource,
   playSoundRequest,
   truncateMessage,

@@ -1,6 +1,6 @@
 export type CliMode = "notify" | "focus";
 
-export type NotifierKind = "terminal-notifier" | "swiftdialog";
+export type NotifierKind = "terminal-notifier" | "swiftdialog" | "vde-notifier-app";
 
 export type CliOptions = {
   readonly mode: CliMode;
