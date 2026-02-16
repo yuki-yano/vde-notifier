@@ -1,6 +1,6 @@
 {
   "name": "vde-notifier",
-  "version": "0.1.1",
+  "version": "0.1.3",
   "description": "tmux focus notification CLI for macOS",
   "type": "module",
   "bin": {
