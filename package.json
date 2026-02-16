@@ -44,6 +44,10 @@
   ],
   "author": "Yuki Yano",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yuki-yano/vde-notifier"
+  },
   "files": [
     "dist",
     "README.md",
