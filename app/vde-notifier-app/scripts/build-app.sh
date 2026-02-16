@@ -7,6 +7,18 @@ REPO_ROOT="$(cd "${PROJECT_DIR}/../.." && pwd)"
 BUILD_DIR="${BUILD_DIR:-${REPO_ROOT}/build}"
 CONFIGURATION="${CONFIGURATION:-release}"
 BUNDLE_IDENTIFIER="com.yuki-yano.vde-notifier-app.agent"
+APP_VERSION="${APP_VERSION:-}"
+
+# Prefer explicit env, then current app-v tag, then a local development fallback.
+if [[ -z "${APP_VERSION}" ]]; then
+  TAG="$(git -C "${REPO_ROOT}" describe --tags --exact-match 2>/dev/null || true)"
+  if [[ "${TAG}" =~ ^app-v([0-9]+(\.[0-9]+)*)$ ]]; then
+    APP_VERSION="${BASH_REMATCH[1]}"
+  fi
+fi
+
+APP_VERSION="${APP_VERSION:-0.0.0-dev}"
+APP_BUILD_VERSION="${APP_BUILD_VERSION:-${GITHUB_RUN_NUMBER:-1}}"
 
 env -u LIBRARY_PATH swift build --package-path "${PROJECT_DIR}" --configuration "${CONFIGURATION}" --product vde-notifier-app
 
@@ -57,9 +69,9 @@ cat > "${CONTENTS_DIR}/Info.plist" <<PLIST
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>
-  <string>0.1.0</string>
+  <string>${APP_VERSION}</string>
   <key>CFBundleVersion</key>
-  <string>1</string>
+  <string>${APP_BUILD_VERSION}</string>
   <key>LSMinimumSystemVersion</key>
   <string>14.0</string>
   <key>CFBundleIconFile</key>
