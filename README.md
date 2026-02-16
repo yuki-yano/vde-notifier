@@ -8,8 +8,10 @@ vde-notifier is a tmux-aware notification CLI for macOS. It surfaces long-runnin
 
 - macOS 14 or later
 - `tmux`, `vde-notifier-app` (default notifier)
-- Node.js 20+ or Bun 1.1+
+- Node.js 22+ or Bun 1.1+
 - `pnpm`
+
+`vde-notifier` is published as a macOS-only npm package (`os: darwin`, `engines.node: >=22`).
 
 ```bash
 # install default notifier backend
@@ -62,6 +64,8 @@ vde-notifier --title "Build finished" --message "webpack completed"
 - `--dry-run`: Skips sending a notification. Combine with `--verbose` to print the gathered tmux metadata and focus command.
 - `--verbose`: Emits JSON logs describing notify and focus stages.
 - `--log-file <path>`: Appends the same JSON diagnostics to the given file (one JSON object per line). Also propagates to focus-mode invocations.
+- `--help`, `-h`: Show usage.
+- `--version`, `-v`: Show CLI version.
 
 When `--notifier swiftdialog` is selected, vde-notifier plays the requested sound locally and then sends `dialog --notification ...` with a primary action wired to the focus command. Clicking the notification will restore the tmux pane.
 
@@ -179,6 +183,7 @@ Workflow:
 Trigger:
 
 - Push a tag with `npm-v*` (example: `npm-v0.1.1`)
+- The tag version must match `package.json` (for example, `npm-v0.1.1` with `"version": "0.1.1"`).
 
 Example:
 
@@ -186,6 +191,8 @@ Example:
 git tag npm-v0.1.1
 git push origin npm-v0.1.1
 ```
+
+`publish.yml` also verifies that the target version is not already on npm and publishes with provenance (`npm publish --provenance`).
 
 ### App/cask release
 
@@ -254,6 +261,7 @@ pnpm run swift:release-asset
 - Install dependencies: `pnpm install`
 - Lint: `pnpm run lint`
 - Test: `pnpm run test`
+- Package dry-run check: `pnpm run pack:check`
 - Build: `pnpm run build`
 - Watch build: `pnpm run dev`
 - Swift backend tests: `pnpm run swift:test`

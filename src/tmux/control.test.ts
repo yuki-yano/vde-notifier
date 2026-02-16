@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { focusPane } from "../control.js";
-import type { TmuxContext } from "../../types.js";
+import { focusPane } from "./control.js";
+import type { TmuxContext } from "../types.js";
 
 vi.mock("execa", () => ({
   execa: vi.fn()

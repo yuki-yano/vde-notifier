@@ -15,21 +15,26 @@
     "swift:release-asset": "app/vde-notifier-app/scripts/create-release-asset.sh",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "pack:check": "pnpm run build && npm pack --dry-run --json --ignore-scripts | node scripts/verify-npm-pack.mjs",
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "ci": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run test",
-    "prepublishOnly": "pnpm run ci && pnpm run build"
+    "ci": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run pack:check",
+    "prepack": "pnpm run build",
+    "prepublishOnly": "pnpm run ci"
   },
   "dependencies": {
+    "citty": "^0.1.6",
     "execa": "^8.0.1",
     "kleur": "^4.1.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/node": "^22.5.4",
     "@typescript-eslint/eslint-plugin": "^8.8.1",
     "@typescript-eslint/parser": "^8.8.1",
-    "@types/node": "^22.5.4",
+    "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^9.11.1",
     "prettier": "^3.3.3",
     "tsdown": "^0.15.6",
@@ -44,6 +49,12 @@
   ],
   "author": "Yuki Yano",
   "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "os": [
+    "darwin"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/yuki-yano/vde-notifier"

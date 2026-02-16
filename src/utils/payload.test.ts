@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildFocusCommand, parseFocusPayload } from "../payload.js";
-import type { FocusPayload } from "../../types.js";
+import { buildFocusCommand, parseFocusPayload } from "./payload.js";
+import type { FocusPayload } from "../types.js";
 
 describe("focus command payload", () => {
   const samplePayload: FocusPayload = {
@@ -40,5 +40,17 @@ describe("focus command payload", () => {
     const command = buildFocusCommand(samplePayload, { logFile: logPath });
     expect(command.args).toContain("--log-file");
     expect(command.args).toContain(logPath);
+  });
+
+  it("falls back to dist/cli.js when argv entry is missing", () => {
+    const originalArgv = [...process.argv];
+    process.argv = [originalArgv[0] ?? process.execPath];
+
+    try {
+      const command = buildFocusCommand(samplePayload);
+      expect(command.args[0]).toMatch(/dist\/cli\.js$/);
+    } finally {
+      process.argv = originalArgv;
+    }
   });
 });

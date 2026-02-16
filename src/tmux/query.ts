@@ -15,10 +15,11 @@ const FORMAT_SEQUENCE = [
 const TMUX_FORMAT = FORMAT_SEQUENCE.join("\n");
 
 const parseNumber = (value: string, label: string): number => {
-  const parsed = Number.parseInt(value, 10);
-  if (Number.isNaN(parsed)) {
+  const trimmedValue = value.trim();
+  if (!/^\d+$/.test(trimmedValue)) {
     throw new Error(`Failed to parse ${label} as number: ${value}`);
   }
+  const parsed = Number.parseInt(trimmedValue, 10);
   return parsed;
 };
 
@@ -36,7 +37,10 @@ export const resolveTmuxContext = async (tmuxPath: string): Promise<TmuxContext>
     args = ["display-message", "-p", TMUX_FORMAT];
   }
   const { stdout } = await execa(tmuxPath, args);
-  const lines = stdout.trim().split("\n");
+  const lines = stdout.replace(/\r\n/g, "\n").split("\n");
+  while (lines.length > FORMAT_SEQUENCE.length && lines.at(-1) === "") {
+    lines.pop();
+  }
   if (lines.length !== FORMAT_SEQUENCE.length) {
     throw new Error("Unexpected tmux response while collecting pane metadata");
   }

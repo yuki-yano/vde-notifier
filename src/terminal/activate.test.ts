@@ -5,7 +5,7 @@ vi.mock("execa", () => ({
 }));
 
 import { execa } from "execa";
-import { activateTerminal } from "../profile.js";
+import { activateTerminal } from "./profile.js";
 
 const execaMock = vi.mocked(execa);
 const result = (stdout: string) => ({ stdout }) as unknown as Awaited<ReturnType<typeof execa>>;
@@ -49,5 +49,12 @@ describe("activateTerminal", () => {
     execaMock.mockRejectedValueOnce(new Error("not authorised"));
 
     await expect(activateTerminal("org.alacritty")).resolves.not.toThrow();
+  });
+
+  it("throws when both activation and frontmost hand-off fail", async () => {
+    execaMock.mockRejectedValueOnce(new Error("activate failed"));
+    execaMock.mockRejectedValueOnce(new Error("frontmost failed"));
+
+    await expect(activateTerminal("org.alacritty")).rejects.toThrow("frontmost failed");
   });
 });

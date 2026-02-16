@@ -9,38 +9,38 @@ import type {
   FocusPayload,
   TerminalProfile,
   TmuxContext
-} from "../types.js";
-import { __internal } from "../cli.js";
+} from "./types.js";
+import { __internal } from "./cli.js";
 
-vi.mock("../tmux/query.js", () => ({
+vi.mock("./tmux/query.js", () => ({
   resolveTmuxContext: vi.fn()
 }));
 
-vi.mock("../terminal/profile.js", () => ({
+vi.mock("./terminal/profile.js", () => ({
   resolveTerminalProfile: vi.fn(),
   activateTerminal: vi.fn()
 }));
 
-vi.mock("../notify/send.js", () => ({
+vi.mock("./notify/send.js", () => ({
   sendNotification: vi.fn()
 }));
 
-vi.mock("../utils/payload.js", () => ({
+vi.mock("./utils/payload.js", () => ({
   buildFocusCommand: vi.fn(),
   parseFocusPayload: vi.fn()
 }));
 
-vi.mock("../tmux/control.js", () => ({
+vi.mock("./tmux/control.js", () => ({
   focusPane: vi.fn()
 }));
 
-const resolveTmuxContextMock = vi.mocked(await import("../tmux/query.js")).resolveTmuxContext;
-const resolveTerminalProfileMock = vi.mocked(await import("../terminal/profile.js")).resolveTerminalProfile;
-const activateTerminalMock = vi.mocked(await import("../terminal/profile.js")).activateTerminal;
-const sendNotificationMock = vi.mocked(await import("../notify/send.js")).sendNotification;
-const buildFocusCommandMock = vi.mocked(await import("../utils/payload.js")).buildFocusCommand;
-const parseFocusPayloadMock = vi.mocked(await import("../utils/payload.js")).parseFocusPayload;
-const focusPaneMock = vi.mocked(await import("../tmux/control.js")).focusPane;
+const resolveTmuxContextMock = vi.mocked(await import("./tmux/query.js")).resolveTmuxContext;
+const resolveTerminalProfileMock = vi.mocked(await import("./terminal/profile.js")).resolveTerminalProfile;
+const activateTerminalMock = vi.mocked(await import("./terminal/profile.js")).activateTerminal;
+const sendNotificationMock = vi.mocked(await import("./notify/send.js")).sendNotification;
+const buildFocusCommandMock = vi.mocked(await import("./utils/payload.js")).buildFocusCommand;
+const parseFocusPayloadMock = vi.mocked(await import("./utils/payload.js")).parseFocusPayload;
+const focusPaneMock = vi.mocked(await import("./tmux/control.js")).focusPane;
 
 const sampleTmux: TmuxContext = {
   tmuxBin: "/opt/homebrew/bin/tmux",
@@ -279,6 +279,52 @@ describe("parseArguments", () => {
   it("allows selecting vde-notifier-app notifier", () => {
     const options = __internal.parseArguments(["--notifier", "vde-notifier-app"]);
     expect(options.notifier).toBe("vde-notifier-app");
+  });
+
+  it("rejects enabling codex and claude together", () => {
+    expect(() => __internal.parseArguments(["--codex", "--claude"])).toThrow(
+      "Options --codex and --claude cannot be used together."
+    );
+  });
+
+  it("rejects unknown options", () => {
+    expect(() => __internal.parseArguments(["--unknown"])).toThrow("Failed to parse CLI options:\nUnknown option:");
+  });
+
+  it("rejects missing value for value options", () => {
+    expect(() => __internal.parseArguments(["--mode"])).toThrow(
+      "Failed to parse CLI options:\nOption --mode requires a value."
+    );
+  });
+
+  it("rejects values for boolean flags", () => {
+    expect(() => __internal.parseArguments(["--verbose=true"])).toThrow(
+      "Failed to parse CLI options:\nOption --verbose does not take a value."
+    );
+  });
+});
+
+describe("control options", () => {
+  it("detects help flags", () => {
+    expect(__internal.resolveControlOptions(["--help"]).help).toBe(true);
+    expect(__internal.resolveControlOptions(["-h"]).help).toBe(true);
+  });
+
+  it("detects version flags", () => {
+    expect(__internal.resolveControlOptions(["--version"]).version).toBe(true);
+    expect(__internal.resolveControlOptions(["-v"]).version).toBe(true);
+  });
+
+  it("formats usage output", () => {
+    const usage = __internal.formatUsage("vde-notifier");
+    expect(usage).toContain("Usage: vde-notifier [options]");
+    expect(usage).toContain("--help, -h");
+    expect(usage).toContain("--version, -v");
+  });
+
+  it("resolves a semantic CLI version", () => {
+    const version = __internal.resolveCliVersion();
+    expect(version).toMatch(/^\d+\.\d+\.\d+/);
   });
 });
 

@@ -4,6 +4,7 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import { argv, env as processEnv, exit, stdin as processStdin } from "node:process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
 import { z } from "zod";
+import { parseArgs, type ArgsDef } from "citty";
 import { bold, red } from "kleur/colors";
 import type {
   CliOptions,
@@ -135,20 +136,6 @@ const extractCodexMessage = (payload: Record<string, unknown>): string | undefin
   return undefined;
 };
 
-const CODEX_DEFAULT_TITLE = defaultAgentTitle("codex");
-
-const extractCodexTitle = (payload: Record<string, unknown>): string | undefined => {
-  const explicit = asNonEmptyString(payload["notification-title"]);
-  if (typeof explicit === "string") {
-    return explicit;
-  }
-  const fallback = asNonEmptyString(payload.title);
-  if (typeof fallback === "string") {
-    return fallback;
-  }
-  return CODEX_DEFAULT_TITLE;
-};
-
 const extractSoundNameFromPath = (soundPath: string): string | undefined => {
   const segments = soundPath.split("/");
   const last = segments[segments.length - 1];
@@ -202,6 +189,7 @@ const resolveCodexSound = (payload: Record<string, unknown>): string | undefined
 };
 
 const optionsWithValue = new Set<string>([
+  "--mode",
   "--title",
   "--message",
   "--terminal",
@@ -213,6 +201,190 @@ const optionsWithValue = new Set<string>([
 ]);
 
 const flagOnlyOptions = new Set<string>(["--codex", "--claude", "--dry-run", "--verbose"]);
+
+const formatUsage = (programName = "vde-notifier"): string =>
+  [
+    `Usage: ${programName} [options]`,
+    "",
+    "Options:",
+    "  --mode <notify|focus>                  Mode to run (default: notify)",
+    "  --title <string>                       Notification title",
+    "  --message <string>                     Notification message",
+    "  --terminal <profile>                   Terminal profile (e.g. wezterm, alacritty)",
+    "  --term-bundle-id <bundle-id>           Explicit terminal bundle identifier",
+    "  --sound <name|None>                    Notification sound",
+    "  --notifier <vde-notifier-app|swiftdialog|terminal-notifier>",
+    "                                         Notification backend",
+    "  --codex                                Parse Codex payload",
+    "  --claude                               Parse Claude payload",
+    "  --dry-run                              Print payload without sending notification",
+    "  --verbose                              Print diagnostic JSON logs",
+    "  --log-file <path>                      Append diagnostic logs to file",
+    "  --payload <base64>                     Focus payload for --mode focus",
+    "  --help, -h                             Show help",
+    "  --version, -v                          Show version"
+  ].join("\n");
+
+const resolveCliVersion = (): string => {
+  const envVersion = asNonEmptyString(processEnv.npm_package_version);
+  if (typeof envVersion === "string") {
+    return envVersion;
+  }
+
+  try {
+    const modulePath = fileURLToPath(import.meta.url);
+    const packageJsonPath = resolve(dirname(modulePath), "..", "package.json");
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, { encoding: "utf8" })) as { version?: unknown };
+    const version = asNonEmptyString(packageJson.version);
+    if (typeof version === "string") {
+      return version;
+    }
+  } catch {
+    // fall through
+  }
+
+  return "0.0.0";
+};
+
+const resolveControlOptions = (args: readonly string[]): { readonly help: boolean; readonly version: boolean } => {
+  const parsedArgs = parseArgs([...args], cliArgsDef);
+  return {
+    help: parsedArgs.help === true,
+    version: parsedArgs.version === true
+  };
+};
+
+const resolveProgramName = (): string => {
+  const entry = asNonEmptyString(argv[1]);
+  if (typeof entry === "string") {
+    const name = basename(entry);
+    if (name === "cli.js" || name === "index.js") {
+      return "vde-notifier";
+    }
+    if (name.length > 0) {
+      return name;
+    }
+  }
+  return "vde-notifier";
+};
+
+const failCliOptionParse = (message: string): never => {
+  throw new Error(`Failed to parse CLI options:\n${message}`);
+};
+
+const knownLongOptions = new Set<string>([...optionsWithValue, ...flagOnlyOptions, "--help", "--version"]);
+const knownShortOptions = new Set<string>(["-h", "-v"]);
+
+const validateRawArgs = (rawArgs: readonly string[]): void => {
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index];
+
+    if (arg === "--") {
+      return;
+    }
+
+    if (!arg.startsWith("-")) {
+      continue;
+    }
+
+    if (arg.startsWith("--")) {
+      const raw = arg.slice(2);
+      if (raw.length === 0) {
+        failCliOptionParse("Unknown option: --");
+      }
+
+      if (raw.startsWith("no-")) {
+        const key = raw.slice(3);
+        const flagLabel = `--${key}`;
+        if (!flagOnlyOptions.has(flagLabel)) {
+          failCliOptionParse(`Unknown boolean option: --no-${key}`);
+        }
+        continue;
+      }
+
+      const [key, inlineValue] = raw.split("=", 2);
+      const flagLabel = `--${key}`;
+
+      if (!knownLongOptions.has(flagLabel)) {
+        failCliOptionParse(`Unknown option: ${flagLabel}`);
+      }
+      if (flagOnlyOptions.has(flagLabel) && inlineValue !== undefined) {
+        failCliOptionParse(`Option ${flagLabel} does not take a value.`);
+      }
+      if (optionsWithValue.has(flagLabel) && inlineValue === undefined) {
+        const next = rawArgs[index + 1];
+        if (typeof next !== "string" || next.startsWith("--")) {
+          failCliOptionParse(`Option ${flagLabel} requires a value.`);
+        }
+        index += 1;
+      }
+
+      continue;
+    }
+
+    if (!knownShortOptions.has(arg)) {
+      failCliOptionParse(`Unknown short option: ${arg}`);
+    }
+  }
+};
+
+const cliArgsDef = {
+  mode: {
+    type: "string",
+    default: "notify"
+  },
+  title: {
+    type: "string"
+  },
+  message: {
+    type: "string"
+  },
+  terminal: {
+    type: "string"
+  },
+  "term-bundle-id": {
+    type: "string"
+  },
+  sound: {
+    type: "string"
+  },
+  notifier: {
+    type: "string",
+    default: "vde-notifier-app"
+  },
+  codex: {
+    type: "boolean",
+    default: false
+  },
+  claude: {
+    type: "boolean",
+    default: false
+  },
+  "dry-run": {
+    type: "boolean",
+    default: false
+  },
+  verbose: {
+    type: "boolean",
+    default: false
+  },
+  "log-file": {
+    type: "string"
+  },
+  payload: {
+    type: "string"
+  },
+  help: {
+    type: "boolean",
+    alias: "h",
+    default: false
+  },
+  version: {
+    type: "boolean",
+    alias: "v",
+    default: false
+  }
+} satisfies ArgsDef;
 
 const extractCodexArg = (args: readonly string[]): string | undefined => {
   const candidates: string[] = [];
@@ -518,77 +690,41 @@ const cliSchema = z.object({
 });
 
 const parseArguments = (args: readonly string[]): CliOptions => {
-  const collected: Record<string, string | boolean | undefined> = {};
+  validateRawArgs(args);
+  const parsedArgs = parseArgs([...args], cliArgsDef);
 
-  for (let index = 0; index < args.length; index += 1) {
-    const arg = args[index];
-    if (!arg.startsWith("--")) {
-      continue;
-    }
-
-    const raw = arg.slice(2);
-    if (raw.startsWith("no-")) {
-      const key = raw.slice(3);
-      collected[key] = false;
-      continue;
-    }
-
-    const [key, inlineValue] = raw.split("=", 2);
-    const flagLabel = `--${key}`;
-    if (inlineValue !== undefined) {
-      collected[key] = inlineValue;
-      continue;
-    }
-
-    if (flagOnlyOptions.has(flagLabel)) {
-      collected[key] = true;
-      continue;
-    }
-
-    if (optionsWithValue.has(flagLabel)) {
-      const next = args[index + 1];
-      if (typeof next === "string" && !next.startsWith("--")) {
-        collected[key] = next;
-        index += 1;
-      }
-      continue;
-    }
-
-    const next = args[index + 1];
-    if (typeof next === "string" && !next.startsWith("--")) {
-      collected[key] = next;
-      index += 1;
-    } else {
-      collected[key] = true;
-    }
-  }
-
-  const optionLogFile = asNonEmptyString(collected["log-file"]);
+  const optionLogFile = asNonEmptyString(parsedArgs["log-file"]);
   const envLogFile = asNonEmptyString(processEnv.VDE_NOTIFIER_LOG_FILE);
   const resolvedLogFile = optionLogFile ?? envLogFile;
 
   const parsed = cliSchema.safeParse({
-    mode: collected.mode,
-    title: collected.title,
-    message: collected.message,
-    terminal: collected.terminal,
-    termBundleId: collected["term-bundle-id"],
-    sound: collected.sound,
-    notifier: collected.notifier,
-    codex: collected.codex === true,
-    claude: collected.claude === true,
-    dryRun: collected["dry-run"],
-    verbose: collected.verbose,
+    mode: parsedArgs.mode,
+    title: parsedArgs.title,
+    message: parsedArgs.message,
+    terminal: parsedArgs.terminal,
+    termBundleId: parsedArgs["term-bundle-id"],
+    sound: parsedArgs.sound,
+    notifier: parsedArgs.notifier,
+    codex: parsedArgs.codex === true,
+    claude: parsedArgs.claude === true,
+    dryRun: parsedArgs["dry-run"] === true,
+    verbose: parsedArgs.verbose === true,
     logFile: resolvedLogFile,
-    payload: collected.payload
+    payload: parsedArgs.payload
   });
 
   if (!parsed.success) {
     const issues = parsed.error.issues.map((issue) => issue.message).join("\n");
-    throw new Error(`Failed to parse CLI options:\n${issues}`);
+    failCliOptionParse(issues);
   }
 
-  return parsed.data;
+  const parsedOptions = parsed.data as CliOptions;
+
+  if (parsedOptions.codex && parsedOptions.claude) {
+    throw new Error("Options --codex and --claude cannot be used together.");
+  }
+
+  return parsedOptions;
 };
 
 const isMainModule = (): boolean => {
@@ -743,6 +879,16 @@ const runFocus = async (options: CliOptions): Promise<number> => {
 export const main = async (): Promise<number> => {
   try {
     const rawArgs = argv.slice(2);
+    const controls = resolveControlOptions(rawArgs);
+    if (controls.help) {
+      console.log(formatUsage(resolveProgramName()));
+      return 0;
+    }
+    if (controls.version) {
+      console.log(resolveCliVersion());
+      return 0;
+    }
+
     const options = parseArguments(rawArgs);
     assertRuntimeSupport();
     if (options.mode === "notify") {
@@ -753,6 +899,10 @@ export const main = async (): Promise<number> => {
     return await runFocus(options);
   } catch (error) {
     printError(error);
+    if (error instanceof Error && error.message.startsWith("Failed to parse CLI options:")) {
+      console.error("");
+      console.error(formatUsage(resolveProgramName()));
+    }
     return 1;
   }
 };
@@ -767,6 +917,9 @@ if (isMainModule()) {
 }
 
 export const __internal = {
+  formatUsage,
+  resolveCliVersion,
+  resolveControlOptions,
   parseArguments,
   runNotify,
   runFocus,
@@ -774,6 +927,5 @@ export const __internal = {
   loadCodexContext,
   loadClaudeContext,
   extractCodexMessage,
-  extractCodexTitle,
   resolveCodexSound
 };

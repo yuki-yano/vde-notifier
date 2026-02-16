@@ -1,5 +1,5 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { resolveTmuxContext } from "../query.js";
+import { resolveTmuxContext } from "./query.js";
 
 vi.mock("execa", () => ({
   execa: vi.fn()
@@ -60,6 +60,23 @@ describe("resolveTmuxContext", () => {
     execaMock.mockResolvedValue({ stdout } as unknown as Awaited<ReturnType<typeof execa>>);
 
     await expect(resolveTmuxContext("tmux")).rejects.toThrow("Failed to parse window index as number");
+  });
+
+  it("throws when numeric fields include non-digit suffixes", async () => {
+    delete process.env.TMUX_PANE;
+    const stdout = ["/tmp/tmux-501/default", "/dev/ttys005", "dev", "@4", "2abc", "%17", "1", "node"].join("\n");
+    execaMock.mockResolvedValue({ stdout } as unknown as Awaited<ReturnType<typeof execa>>);
+
+    await expect(resolveTmuxContext("tmux")).rejects.toThrow("Failed to parse window index as number");
+  });
+
+  it("keeps empty pane command instead of rejecting output shape", async () => {
+    delete process.env.TMUX_PANE;
+    const stdout = ["/tmp/tmux-501/default", "/dev/ttys005", "dev", "@4", "2", "%17", "1", ""].join("\n");
+    execaMock.mockResolvedValue({ stdout } as unknown as Awaited<ReturnType<typeof execa>>);
+
+    const context = await resolveTmuxContext("/opt/homebrew/bin/tmux");
+    expect(context.paneCurrentCommand).toBe("");
   });
 
   it("omits target argument when TMUX_PANE is undefined", async () => {

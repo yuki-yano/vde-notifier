@@ -107,8 +107,22 @@ export const resolveTerminalProfile = ({ explicitKey, bundleOverride, env }: Res
   }
 
   if (typeof explicitKey === "string" && explicitKey.length > 0) {
-    const byAlias = findByAlias(explicitKey) ?? explicitKey;
-    return buildProfile(byAlias, "override");
+    const byAlias = findByAlias(explicitKey);
+    if (byAlias !== undefined) {
+      return buildProfile(byAlias, "override");
+    }
+
+    const byBundle = findByBundleId(explicitKey);
+    if (byBundle !== undefined) {
+      return buildProfile(byBundle, "override");
+    }
+
+    return {
+      key: "custom",
+      name: explicitKey,
+      bundleId: explicitKey,
+      source: "override"
+    };
   }
 
   const detected = detectFromEnv(env);
@@ -159,5 +173,3 @@ export const activateTerminal = async (bundleId: string): Promise<void> => {
 export const __internal = {
   buildFrontmostScript
 };
-const FRONTMOST_QUERY =
-  'tell application "System Events" to bundle identifier of first application process whose frontmost is true';

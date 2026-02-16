@@ -23,7 +23,7 @@ const resolveEntryPoint = (): string => {
   if (typeof entryFromArgv === "string" && entryFromArgv.length > 0) {
     return resolve(entryFromArgv);
   }
-  const fallback = fileURLToPath(new URL("../dist/index.js", import.meta.url));
+  const fallback = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
   return resolve(fallback);
 };
 
