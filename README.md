@@ -139,6 +139,7 @@ vde-notifier hydrates notifications from agent payloads in two ways:
 - `--claude`: pipe Claude Code's JSON payload to stdin. If the payload contains `transcript_path`, vde-notifier opens the referenced transcript JSONL file and uses the latest assistant message.
 
 Codex notifications always use the repository-scoped title `Codex: <repo-name>`, ignoring payload-provided titles. Claude notifications fall back to `Claude: <repo-name>` when no explicit title is supplied.
+If either payload is malformed JSON, the command exits with a non-zero status.
 
 For either flag the CLI looks for:
 

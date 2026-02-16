@@ -13,7 +13,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24.13.0
+          node-version: 22.17.0
 
       - name: Enable Corepack
         run: corepack enable
@@ -37,3 +37,11 @@ jobs:
 
       - name: Run CI
         run: pnpm run ci
+
+  swift:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Swift tests
+        run: env -u LIBRARY_PATH swift test --package-path app/vde-notifier-app

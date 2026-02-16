@@ -401,6 +401,12 @@ describe("loadCodexContext", () => {
     expect(result?.message).toBe("From env");
     expect(result?.sound).toBe("Ping");
   });
+
+  it("throws on invalid codex JSON payload", async () => {
+    await expect(__internal.loadCodexContext(["--codex", "{not-json}"], "")).rejects.toThrow(
+      "Failed to parse Codex payload JSON:"
+    );
+  });
 });
 
 describe("loadClaudeContext", () => {
@@ -453,5 +459,9 @@ describe("loadClaudeContext", () => {
     const context = await __internal.loadClaudeContext(payload);
     const expectedTitle = `Claude: ${basename(process.cwd())}`;
     expect(context?.title).toBe(expectedTitle);
+  });
+
+  it("throws on invalid Claude payload JSON", async () => {
+    await expect(__internal.loadClaudeContext("{not-json}")).rejects.toThrow("Failed to parse Claude payload JSON:");
   });
 });

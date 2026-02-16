@@ -482,8 +482,8 @@ const loadCodexContext = async (
       sound: resolveCodexSound(record)
     };
   } catch (error) {
-    console.error("Failed to parse Codex payload");
-    return undefined;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse Codex payload JSON: ${message}`);
   }
 };
 
@@ -647,8 +647,8 @@ const loadClaudeContext = async (stdinOverride?: string): Promise<CodexContext |
       sound: resolveCodexSound(record)
     };
   } catch (error) {
-    console.error("Failed to parse Claude payload");
-    return undefined;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed to parse Claude payload JSON: ${message}`);
   }
 };
 

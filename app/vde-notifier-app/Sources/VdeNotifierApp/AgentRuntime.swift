@@ -13,6 +13,12 @@ final class ActionStore {
   private let queue = DispatchQueue(label: "com.yuki-yano.vde-notifier-app.action-store")
   private let encoder = JSONEncoder()
   private let decoder = JSONDecoder()
+  private static let actionRetentionInterval: TimeInterval = 60 * 60 * 24 * 7
+  private static let timestampFormatter: ISO8601DateFormatter = {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter
+  }()
 
   init(fileURL: URL) {
     self.fileURL = fileURL
@@ -22,6 +28,7 @@ final class ActionStore {
   func save(requestId: String, action: ActionPayload) throws {
     try queue.sync {
       var table = try loadTable()
+      _ = pruneExpiredEntries(&table)
       table[requestId] = StoredAction(
         executable: action.executable,
         arguments: action.arguments,
@@ -34,7 +41,11 @@ final class ActionStore {
   func take(requestId: String) throws -> ActionPayload? {
     try queue.sync {
       var table = try loadTable()
+      let didPrune = pruneExpiredEntries(&table)
       guard let stored = table.removeValue(forKey: requestId) else {
+        if didPrune {
+          try persist(table)
+        }
         return nil
       }
       try persist(table)
@@ -45,8 +56,11 @@ final class ActionStore {
   func remove(requestId: String) throws {
     try queue.sync {
       var table = try loadTable()
-      table.removeValue(forKey: requestId)
-      try persist(table)
+      let didPrune = pruneExpiredEntries(&table)
+      let removed = table.removeValue(forKey: requestId) != nil
+      if didPrune || removed {
+        try persist(table)
+      }
     }
   }
 
@@ -69,9 +83,21 @@ final class ActionStore {
   }
 
   private func iso8601Now() -> String {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-    return formatter.string(from: Date())
+    Self.timestampFormatter.string(from: Date())
+  }
+
+  private func pruneExpiredEntries(_ table: inout [String: StoredAction]) -> Bool {
+    let threshold = Date().addingTimeInterval(-Self.actionRetentionInterval)
+    let originalCount = table.count
+
+    table = table.filter { _, storedAction in
+      guard let createdAt = Self.timestampFormatter.date(from: storedAction.createdAt) else {
+        return false
+      }
+      return createdAt >= threshold
+    }
+
+    return table.count != originalCount
   }
 }
 
@@ -233,7 +259,7 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
       identifier: Self.categoryIdentifier,
       actions: [focusAction],
       intentIdentifiers: [],
-      options: []
+      options: [.customDismissAction]
     )
     center.setNotificationCategories([category])
   }
@@ -282,13 +308,18 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   ) {
     defer { completionHandler() }
 
+    let requestId = response.notification.request.identifier
+    if response.actionIdentifier == UNNotificationDismissActionIdentifier {
+      try? actionStore.remove(requestId: requestId)
+      return
+    }
+
     if response.actionIdentifier != Self.actionIdentifier &&
       response.actionIdentifier != UNNotificationDefaultActionIdentifier
     {
       return
     }
 
-    let requestId = response.notification.request.identifier
     DispatchQueue.global(qos: .userInitiated).async { [weak self] in
       self?.runAction(requestId: requestId)
     }

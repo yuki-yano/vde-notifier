@@ -47,6 +47,9 @@ jobs:
       - name: Checkout release tag commit
         run: git checkout --detach "${{ steps.release_tag.outputs.value }}"
 
+      - name: Run Swift tests
+        run: env -u LIBRARY_PATH swift test --package-path app/vde-notifier-app
+
       - name: Build app release asset
         run: |
           TAG="${{ steps.release_tag.outputs.value }}"

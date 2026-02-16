@@ -21,12 +21,76 @@ final class ActionStoreTests: XCTestCase {
     XCTAssertNil(missing)
   }
 
+  func testSavePrunesExpiredEntries() throws {
+    let tempDirectory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+    let storeURL = tempDirectory.appendingPathComponent("actions.json", isDirectory: false)
+    try writeActionsFixture(to: storeURL)
+    let store = ActionStore(fileURL: storeURL)
+
+    try store.save(requestId: "new", action: ActionPayload(executable: "/usr/bin/say", arguments: ["new"]))
+
+    let table = try readActionsJSON(from: storeURL)
+    XCTAssertNil(table["expired"])
+    XCTAssertNotNil(table["recent"])
+    XCTAssertNotNil(table["new"])
+  }
+
+  func testTakePersistsPrunedTableWhenRequestIsMissing() throws {
+    let tempDirectory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: tempDirectory) }
+
+    let storeURL = tempDirectory.appendingPathComponent("actions.json", isDirectory: false)
+    try writeActionsFixture(to: storeURL)
+    let store = ActionStore(fileURL: storeURL)
+
+    let missing = try store.take(requestId: "missing")
+    XCTAssertNil(missing)
+
+    let table = try readActionsJSON(from: storeURL)
+    XCTAssertNil(table["expired"])
+    XCTAssertNotNil(table["recent"])
+  }
+
   private func makeTemporaryDirectory() -> URL {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent("vde-notifier-app-action-store-tests", isDirectory: true)
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
     try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory
+  }
+
+  private func writeActionsFixture(to path: URL) throws {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+    let expired = formatter.string(from: Date().addingTimeInterval(-(60 * 60 * 24 * 8)))
+    let recent = formatter.string(from: Date())
+    let payload: [String: [String: Any]] = [
+      "expired": [
+        "executable": "/usr/bin/say",
+        "arguments": ["old"],
+        "createdAt": expired
+      ],
+      "recent": [
+        "executable": "/usr/bin/say",
+        "arguments": ["new"],
+        "createdAt": recent
+      ]
+    ]
+    let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
+    try data.write(to: path)
+  }
+
+  private func readActionsJSON(from path: URL) throws -> [String: Any] {
+    let data = try Data(contentsOf: path)
+    let value = try JSONSerialization.jsonObject(with: data)
+    guard let table = value as? [String: Any] else {
+      XCTFail("actions.json must be a dictionary")
+      return [:]
+    }
+    return table
   }
 }
 
