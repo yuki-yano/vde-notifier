@@ -60,3 +60,44 @@ jobs:
           files: VdeNotifierApp.app.tar.gz
           overwrite_files: true
           generate_release_notes: true
+
+      - name: Resolve cask metadata
+        id: cask_metadata
+        run: |
+          TAG="${{ steps.release_tag.outputs.value }}"
+          if [[ "${TAG}" != app-v* ]]; then
+            echo "unexpected app tag format: ${TAG}" >&2
+            exit 1
+          fi
+
+          VERSION="${TAG#app-v}"
+          SHA256="$(shasum -a 256 VdeNotifierApp.app.tar.gz | awk '{ print $1 }')"
+
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "sha256=${SHA256}" >> "${GITHUB_OUTPUT}"
+
+      - name: Dispatch homebrew tap update
+        env:
+          DISPATCH_TOKEN: ${{ secrets.HOMEBREW_TAP_DISPATCH_TOKEN }}
+          TAP_REPOSITORY: yuki-yano/homebrew-vde-notifier
+          VERSION: ${{ steps.cask_metadata.outputs.version }}
+          SHA256: ${{ steps.cask_metadata.outputs.sha256 }}
+        run: |
+          if [[ -z "${DISPATCH_TOKEN}" ]]; then
+            echo "HOMEBREW_TAP_DISPATCH_TOKEN is required to update ${TAP_REPOSITORY}" >&2
+            exit 1
+          fi
+
+          curl -fsSL -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${DISPATCH_TOKEN}" \
+            "https://api.github.com/repos/${TAP_REPOSITORY}/dispatches" \
+            -d @- <<JSON
+          {
+            "event_type": "update-vde-notifier-app-cask",
+            "client_payload": {
+              "version": "${VERSION}",
+              "sha256": "${SHA256}"
+            }
+          }
+          JSON

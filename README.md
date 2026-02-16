@@ -197,7 +197,16 @@ Release automation is defined in:
 
 - `.github/workflows/release-vde-notifier-app.yml`
 
-The workflow builds the Swift app and uploads/replaces `VdeNotifierApp.app.tar.gz` for the specified app tag release.
+The workflow:
+
+1. Builds the Swift app release asset.
+2. Uploads/replaces `VdeNotifierApp.app.tar.gz` on the target release tag.
+3. Computes SHA256 for the uploaded asset.
+4. Sends `repository_dispatch` to `yuki-yano/homebrew-vde-notifier` so cask `version` and `sha256` are updated automatically.
+
+Repository secret required in `yuki-yano/vde-notifier`:
+
+- `HOMEBREW_TAP_DISPATCH_TOKEN`: token with write permission to `yuki-yano/homebrew-vde-notifier`.
 
 ### Standard release flow
 
@@ -210,12 +219,17 @@ git push origin app-v0.1.1
 
 2. Wait for `release-vde-notifier-app` workflow to complete.
 3. Confirm the release contains `VdeNotifierApp.app.tar.gz`.
+4. Confirm `yuki-yano/homebrew-vde-notifier` receives an `update-cask` run and commits updated `version`/`sha256`.
 
 ### Manual rerun flow
 
 If you need to regenerate the asset for an existing tag, run the workflow manually (`workflow_dispatch`) and set:
 
 - `tag`: `app-v0.1.1` (existing app tag)
+
+If tap update does not run automatically, manually trigger `update-cask.yml` in
+`yuki-yano/homebrew-vde-notifier` with the same app version (without `app-v`)
+and the SHA256 of `VdeNotifierApp.app.tar.gz`.
 
 ### Local pre-check
 
