@@ -316,8 +316,7 @@ const isSubagentSessionSource = (source: unknown): boolean => {
   }
   const record = source as Record<string, unknown>;
   return (
-    Object.prototype.hasOwnProperty.call(record, "subagent") ||
-    Object.prototype.hasOwnProperty.call(record, "subAgent")
+    Object.prototype.hasOwnProperty.call(record, "subagent") || Object.prototype.hasOwnProperty.call(record, "subAgent")
   );
 };
 
@@ -360,13 +359,7 @@ const optionsWithValue = new Set<string>([
   "--log-file"
 ]);
 
-const flagOnlyOptions = new Set<string>([
-  "--codex",
-  "--skip-codex-subagent",
-  "--claude",
-  "--dry-run",
-  "--verbose"
-]);
+const flagOnlyOptions = new Set<string>(["--codex", "--skip-codex-subagent", "--claude", "--dry-run", "--verbose"]);
 
 const formatUsage = (programName = "vde-notifier"): string =>
   [
