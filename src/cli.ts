@@ -2,7 +2,17 @@
 import { fileURLToPath } from "node:url";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { argv, env as processEnv, exit, stdin as processStdin } from "node:process";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import {
+  appendFileSync,
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  readdirSync,
+  realpathSync
+} from "node:fs";
 import { z } from "zod";
 import { parseArgs, type ArgsDef } from "citty";
 import { bold, red } from "kleur/colors";
@@ -28,6 +38,8 @@ type CodexContext = {
   readonly title?: string;
   readonly message?: string;
   readonly sound?: string;
+  readonly threadId?: string;
+  readonly isSubagent?: boolean;
 };
 
 const resolveRepositoryDisplayName = (): string => {
@@ -188,6 +200,154 @@ const resolveCodexSound = (payload: Record<string, unknown>): string | undefined
   return stringValue;
 };
 
+const CODEX_THREAD_ID_PATTERN = /^[0-9a-f-]{16,128}$/i;
+const MAX_SESSION_META_READ_BYTES = 128 * 1024;
+
+const asCodexThreadId = (value: unknown): string | undefined => {
+  const threadId = asNonEmptyString(value);
+  if (typeof threadId !== "string") {
+    return undefined;
+  }
+  return CODEX_THREAD_ID_PATTERN.test(threadId) ? threadId : undefined;
+};
+
+const extractCodexThreadId = (payload: Record<string, unknown>): string | undefined => {
+  return (
+    asCodexThreadId(payload["thread-id"]) ??
+    asCodexThreadId((payload as { thread_id?: unknown }).thread_id) ??
+    asCodexThreadId((payload as { threadId?: unknown }).threadId)
+  );
+};
+
+const findCodexSessionRolloutPath = (threadId: string): string | undefined => {
+  const home = asNonEmptyString(processEnv.HOME);
+  if (typeof home !== "string") {
+    return undefined;
+  }
+
+  const sessionsRoot = resolve(home, ".codex", "sessions");
+  if (!existsSync(sessionsRoot)) {
+    return undefined;
+  }
+
+  try {
+    const years = readdirSync(sessionsRoot, { withFileTypes: true });
+    for (const year of years) {
+      if (!year.isDirectory()) {
+        continue;
+      }
+      const yearPath = join(sessionsRoot, year.name);
+      const months = readdirSync(yearPath, { withFileTypes: true });
+      for (const month of months) {
+        if (!month.isDirectory()) {
+          continue;
+        }
+        const monthPath = join(yearPath, month.name);
+        const days = readdirSync(monthPath, { withFileTypes: true });
+        for (const day of days) {
+          if (!day.isDirectory()) {
+            continue;
+          }
+          const dayPath = join(monthPath, day.name);
+          const files = readdirSync(dayPath, { withFileTypes: true });
+          for (const file of files) {
+            if (!file.isFile()) {
+              continue;
+            }
+            if (!file.name.startsWith("rollout-") || !file.name.endsWith(`${threadId}.jsonl`)) {
+              continue;
+            }
+            return join(dayPath, file.name);
+          }
+        }
+      }
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+};
+
+const readFirstJsonLine = (filePath: string): string | undefined => {
+  let fd: number | undefined;
+  try {
+    fd = openSync(filePath, "r");
+    const chunkSize = 4096;
+    const buffer = Buffer.alloc(chunkSize);
+    let position = 0;
+    let line = "";
+    while (position < MAX_SESSION_META_READ_BYTES) {
+      const bytesToRead = Math.min(chunkSize, MAX_SESSION_META_READ_BYTES - position);
+      const bytesRead = readSync(fd, buffer, 0, bytesToRead, position);
+      if (bytesRead <= 0) {
+        break;
+      }
+      const chunk = buffer.toString("utf8", 0, bytesRead);
+      const newlineIndex = chunk.indexOf("\n");
+      if (newlineIndex >= 0) {
+        line += chunk.slice(0, newlineIndex);
+        break;
+      }
+      line += chunk;
+      position += bytesRead;
+    }
+    const trimmed = line.trim();
+    return trimmed.length > 0 ? trimmed : undefined;
+  } catch {
+    return undefined;
+  } finally {
+    if (typeof fd === "number") {
+      try {
+        closeSync(fd);
+      } catch {
+        // no-op
+      }
+    }
+  }
+};
+
+const isSubagentSessionSource = (source: unknown): boolean => {
+  if (typeof source === "string") {
+    return source.toLowerCase().startsWith("subagent");
+  }
+  if (source === null || typeof source !== "object") {
+    return false;
+  }
+  const record = source as Record<string, unknown>;
+  return (
+    Object.prototype.hasOwnProperty.call(record, "subagent") ||
+    Object.prototype.hasOwnProperty.call(record, "subAgent")
+  );
+};
+
+const resolveCodexSubagentState = (threadId: string): boolean | undefined => {
+  const rolloutPath = findCodexSessionRolloutPath(threadId);
+  if (typeof rolloutPath !== "string") {
+    return undefined;
+  }
+
+  const firstLine = readFirstJsonLine(rolloutPath);
+  if (typeof firstLine !== "string") {
+    return undefined;
+  }
+
+  try {
+    const parsed = JSON.parse(firstLine) as { payload?: unknown };
+    if (parsed === null || typeof parsed !== "object") {
+      return undefined;
+    }
+    const payload = parsed.payload;
+    if (payload === null || typeof payload !== "object") {
+      return undefined;
+    }
+    const source = (payload as { source?: unknown }).source;
+    return isSubagentSessionSource(source);
+  } catch {
+    return undefined;
+  }
+};
+
 const optionsWithValue = new Set<string>([
   "--mode",
   "--title",
@@ -200,7 +360,13 @@ const optionsWithValue = new Set<string>([
   "--log-file"
 ]);
 
-const flagOnlyOptions = new Set<string>(["--codex", "--claude", "--dry-run", "--verbose"]);
+const flagOnlyOptions = new Set<string>([
+  "--codex",
+  "--skip-codex-subagent",
+  "--claude",
+  "--dry-run",
+  "--verbose"
+]);
 
 const formatUsage = (programName = "vde-notifier"): string =>
   [
@@ -216,6 +382,7 @@ const formatUsage = (programName = "vde-notifier"): string =>
     "  --notifier <vde-notifier-app|swiftdialog|terminal-notifier>",
     "                                         Notification backend",
     "  --codex                                Parse Codex payload",
+    "  --skip-codex-subagent                  Skip notification for Codex subagent turns",
     "  --claude                               Parse Claude payload",
     "  --dry-run                              Print payload without sending notification",
     "  --verbose                              Print diagnostic JSON logs",
@@ -399,6 +566,10 @@ const cliArgsDef = {
     type: "boolean",
     default: false
   },
+  "skip-codex-subagent": {
+    type: "boolean",
+    default: false
+  },
   claude: {
     type: "boolean",
     default: false
@@ -476,10 +647,13 @@ const loadCodexContext = async (
       return undefined;
     }
     const record = parsed as Record<string, unknown>;
+    const threadId = extractCodexThreadId(record);
     return {
       message: extractCodexMessage(record),
       title: defaultAgentTitle("codex"),
-      sound: resolveCodexSound(record)
+      sound: resolveCodexSound(record),
+      threadId,
+      isSubagent: typeof threadId === "string" ? resolveCodexSubagentState(threadId) : undefined
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -725,6 +899,7 @@ const cliSchema = z.object({
     .transform((value) => (typeof value === "string" && value.length > 0 ? value : undefined)),
   notifier: notifierSchema,
   codex: z.boolean().default(false),
+  skipCodexSubagent: z.boolean().default(false),
   claude: z.boolean().default(false),
   dryRun: z.boolean().default(false),
   verbose: z.boolean().default(false),
@@ -752,6 +927,7 @@ const parseArguments = (args: readonly string[]): CliOptions => {
     sound: parsedArgs.sound,
     notifier: parsedArgs.notifier,
     codex: parsedArgs.codex === true,
+    skipCodexSubagent: parsedArgs["skip-codex-subagent"] === true,
     claude: parsedArgs.claude === true,
     dryRun: parsedArgs["dry-run"] === true,
     verbose: parsedArgs.verbose === true,
@@ -850,6 +1026,22 @@ const runNotify = async (
   rawArgs: readonly string[] = [],
   stdinOverride?: string
 ): Promise<number> => {
+  const agentContext = options.claude
+    ? await loadClaudeContext(stdinOverride)
+    : options.codex
+      ? await loadCodexContext(rawArgs, stdinOverride)
+      : undefined;
+
+  if (options.codex && options.skipCodexSubagent && agentContext?.isSubagent === true) {
+    logVerbose(options.verbose, options.logFile, {
+      stage: "notify",
+      skipped: true,
+      reason: "codex-subagent",
+      context: agentContext
+    });
+    return 0;
+  }
+
   const tmux = await resolveTmuxContext(report.binaries.tmux);
   const envOverride =
     typeof processEnv.VDE_NOTIFIER_TERMINAL === "string" ? processEnv.VDE_NOTIFIER_TERMINAL : undefined;
@@ -858,11 +1050,6 @@ const runNotify = async (
     bundleOverride: options.termBundleId,
     env: processEnv
   });
-  const agentContext = options.claude
-    ? await loadClaudeContext(stdinOverride)
-    : options.codex
-      ? await loadCodexContext(rawArgs, stdinOverride)
-      : undefined;
   const notification = resolveNotificationDetails(tmux, options, agentContext);
   const payload: FocusPayload = {
     tmux,

@@ -11,6 +11,7 @@ export type CliOptions = {
   readonly sound?: string;
   readonly notifier: NotifierKind;
   readonly codex: boolean;
+  readonly skipCodexSubagent: boolean;
   readonly claude: boolean;
   readonly dryRun: boolean;
   readonly verbose: boolean;

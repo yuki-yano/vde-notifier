@@ -78,6 +78,21 @@ const environmentReport: EnvironmentReport = {
   }
 };
 
+const writeCodexSessionMeta = (homeDir: string, threadId: string, source: unknown): void => {
+  const sessionsDir = join(homeDir, ".codex", "sessions", "2026", "02", "21");
+  mkdirSync(sessionsDir, { recursive: true });
+  const rolloutPath = join(sessionsDir, `rollout-2026-02-21T00-00-00-${threadId}.jsonl`);
+  const line = JSON.stringify({
+    timestamp: "2026-02-21T00:00:00.000Z",
+    type: "session_meta",
+    payload: {
+      id: threadId,
+      source
+    }
+  });
+  writeFileSync(rolloutPath, `${line}\n`, { encoding: "utf8" });
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
   resolveTmuxContextMock.mockResolvedValue(sampleTmux);
@@ -156,6 +171,46 @@ describe("runNotify", () => {
     await __internal.runNotify(options, environmentReport);
 
     expect(sendNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ sound: "Ping" }));
+  });
+
+  it("skips notification for codex subagent when configured", async () => {
+    const originalHome = process.env.HOME;
+    const tempHome = mkdtempSync(join(tmpdir(), "vde-notifier-codex-subagent-"));
+    process.env.HOME = tempHome;
+
+    try {
+      const threadId = "019c0930-5842-7352-9467-e2bcc5b40908";
+      writeCodexSessionMeta(tempHome, threadId, {
+        subagent: {
+          thread_spawn: {
+            parent_thread_id: "019c086a-cfed-7cb2-8e17-12c6585f1197",
+            depth: 1
+          }
+        }
+      });
+      const payload = JSON.stringify({ "thread-id": threadId, message: "From subagent" });
+      const options: CliOptions = {
+        mode: "notify",
+        dryRun: false,
+        verbose: false,
+        codex: true,
+        skipCodexSubagent: true,
+        notifier: "terminal-notifier"
+      } as CliOptions;
+
+      const result = await __internal.runNotify(options, environmentReport, ["--codex", payload], "");
+
+      expect(result).toBe(0);
+      expect(sendNotificationMock).not.toHaveBeenCalled();
+      expect(resolveTmuxContextMock).not.toHaveBeenCalled();
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+      rmSync(tempHome, { recursive: true, force: true });
+    }
   });
 });
 
@@ -262,6 +317,11 @@ describe("parseArguments", () => {
   it("enables Claude mode flag", () => {
     const options = __internal.parseArguments(["--claude"]);
     expect(options.claude).toBe(true);
+  });
+
+  it("enables codex subagent skip flag", () => {
+    const options = __internal.parseArguments(["--skip-codex-subagent"]);
+    expect(options.skipCodexSubagent).toBe(true);
   });
 
   it("defaults notifier to vde-notifier-app", () => {
@@ -406,6 +466,28 @@ describe("loadCodexContext", () => {
     await expect(__internal.loadCodexContext(["--codex", "{not-json}"], "")).rejects.toThrow(
       "Failed to parse Codex payload JSON:"
     );
+  });
+
+  it("detects subagent thread id from codex sessions metadata", async () => {
+    const originalHome = process.env.HOME;
+    const tempHome = mkdtempSync(join(tmpdir(), "vde-notifier-codex-context-"));
+    process.env.HOME = tempHome;
+
+    try {
+      const threadId = "019bbab9-b980-7450-b179-4ce8ce6743b9";
+      writeCodexSessionMeta(tempHome, threadId, { subagent: "review" });
+      const payload = JSON.stringify({ "thread-id": threadId, message: "From subagent" });
+      const context = await __internal.loadCodexContext(["--codex", payload], "");
+      expect(context?.threadId).toBe(threadId);
+      expect(context?.isSubagent).toBe(true);
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+      rmSync(tempHome, { recursive: true, force: true });
+    }
   });
 });
 

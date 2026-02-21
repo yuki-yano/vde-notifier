@@ -57,6 +57,7 @@ vde-notifier --title "Build finished" --message "webpack completed"
 - `--message <string>`: Override the notification body. Defaults to `cmd: <paneCurrentCommand> | tty: <clientTTY>`.
 - `--sound <name>`: macOS system sound (for example, `Glass`, `Ping`). Use `None` for silence.
 - `--codex`: Consume Codex-style JSON (see below) from a trailing argument, `CODEX_NOTIFICATION_PAYLOAD`, or stdin (in that priority order) and build the notification from it.
+- `--skip-codex-subagent`: Skip sending notifications when Codex payload belongs to a subagent turn (`thread-id` lookup from `~/.codex/sessions`).
 - `--claude`: Consume Claude Code JSON piped on stdin (supports `transcript_path` to pull the latest assistant reply).
 - `--terminal <profile>`: Force a terminal profile (alacritty, wezterm, ghostty, etc.).
 - `--term-bundle-id <bundleId>`: Override the bundle identifier when auto detection is insufficient.
@@ -146,6 +147,7 @@ For either flag the CLI looks for:
 - Title (`notification-title`, `notification_title`, `title`)
 - The most recent assistant message (from `notification-message`, `notification_message`, `last-assistant-message`, `message`, `messages`, `transcript`, or Claude transcripts)
 - Sound (`sound`, respecting `none`, `default`, or full paths such as `/System/Library/Sounds/Ping.aiff`)
+- Codex thread id (`thread-id`, `thread_id`, `threadId`) to support `--skip-codex-subagent`
 
 To enable automatic notifications from Codex CLI/agents, add the following to `~/.codex/config.toml`:
 
