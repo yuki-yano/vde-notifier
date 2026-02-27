@@ -682,4 +682,47 @@ describe("loadClaudeContext", () => {
     const context = await __internal.loadClaudeContext(payload);
     expect(context?.isNonInteractive).toBe(true);
   });
+
+  it("detects claude non-interactive stop payload when print mode is detected", async () => {
+    const payload = JSON.stringify({
+      hook_event_name: "Stop",
+      last_assistant_message: "Hello"
+    });
+
+    const context = await __internal.loadClaudeContext(payload, () => true);
+    expect(context?.isNonInteractive).toBe(true);
+  });
+
+  it("keeps claude stop payload interactive when print mode is not detected", async () => {
+    const payload = JSON.stringify({
+      hook_event_name: "Stop",
+      last_assistant_message: "Hello"
+    });
+
+    const context = await __internal.loadClaudeContext(payload, () => false);
+    expect(context?.isNonInteractive).toBe(false);
+  });
+});
+
+describe("detectClaudePrintModeFromProcessChain", () => {
+  it("returns true when first claude ancestor uses -p", () => {
+    const table = new Map<number, { parentPid: number; command: string }>([
+      [500, { parentPid: 400, command: "/bin/sh -lc vde-notifier --claude" }],
+      [400, { parentPid: 300, command: "claude -p hello --output-format json" }]
+    ]);
+
+    const result = __internal.detectClaudePrintModeFromProcessChain((pid) => table.get(pid), 500);
+    expect(result).toBe(true);
+  });
+
+  it("returns false when first claude ancestor is interactive", () => {
+    const table = new Map<number, { parentPid: number; command: string }>([
+      [600, { parentPid: 500, command: "/bin/sh -lc vde-notifier --claude" }],
+      [500, { parentPid: 400, command: "claude --settings '{}'" }],
+      [400, { parentPid: 300, command: "/bin/sh -lc claude -p hello" }]
+    ]);
+
+    const result = __internal.detectClaudePrintModeFromProcessChain((pid) => table.get(pid), 600);
+    expect(result).toBe(false);
+  });
 });

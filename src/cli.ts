@@ -2,6 +2,7 @@
 import { fileURLToPath } from "node:url";
 import { basename, dirname, join, relative, resolve } from "node:path";
 import { argv, env as processEnv, exit, stdin as processStdin } from "node:process";
+import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
   closeSync,
@@ -878,9 +879,112 @@ const extractClaudeMessage = (payload: Record<string, unknown>): string | undefi
   return extractCodexMessage(payload);
 };
 
-const isClaudeNonInteractivePayload = (payload: Record<string, unknown>): boolean => {
+type ProcessInfo = {
+  readonly parentPid: number;
+  readonly command: string;
+};
+
+const CLAUDE_PARENT_PROCESS_SCAN_DEPTH = 16;
+
+const extractCommandFirstToken = (command: string): string | undefined => {
+  const trimmed = command.trim();
+  if (trimmed.length === 0) {
+    return undefined;
+  }
+
+  const match = trimmed.match(/^\"[^\"]*\"|^'[^']*'|^\S+/);
+  if (!match || match[0] === undefined) {
+    return undefined;
+  }
+  const token = match[0].trim();
+  if (token.length === 0) {
+    return undefined;
+  }
+  if ((token.startsWith('"') && token.endsWith('"')) || (token.startsWith("'") && token.endsWith("'"))) {
+    return token.slice(1, -1);
+  }
+  return token;
+};
+
+const isClaudeExecutableCommand = (command: string): boolean => {
+  const firstToken = extractCommandFirstToken(command);
+  if (typeof firstToken !== "string" || firstToken.length === 0) {
+    return false;
+  }
+  return basename(firstToken) === "claude";
+};
+
+const hasClaudePrintFlag = (command: string): boolean => {
+  return /(^|\s)-p(\s|$)/.test(command) || /(^|\s)--print(\s|$)/.test(command);
+};
+
+const readProcessField = (pid: number, field: "ppid" | "command"): string | undefined => {
+  const fieldArg = field === "ppid" ? "ppid=" : "command=";
+  const result = spawnSync("ps", ["-o", fieldArg, "-p", String(pid)], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"]
+  });
+  if (result.status !== 0) {
+    return undefined;
+  }
+  const value = result.stdout.trim();
+  return value.length > 0 ? value : undefined;
+};
+
+const readProcessInfo = (pid: number): ProcessInfo | undefined => {
+  const command = readProcessField(pid, "command");
+  const parentPidRaw = readProcessField(pid, "ppid");
+  if (typeof command !== "string" || typeof parentPidRaw !== "string") {
+    return undefined;
+  }
+
+  const parentPid = Number.parseInt(parentPidRaw, 10);
+  if (!Number.isInteger(parentPid) || parentPid < 0) {
+    return undefined;
+  }
+
+  return {
+    parentPid,
+    command
+  };
+};
+
+const detectClaudePrintModeFromProcessChain = (
+  readProcess: (pid: number) => ProcessInfo | undefined = readProcessInfo,
+  startPid: number = process.ppid,
+  maxDepth: number = CLAUDE_PARENT_PROCESS_SCAN_DEPTH
+): boolean => {
+  if (!Number.isInteger(startPid) || startPid <= 1) {
+    return false;
+  }
+
+  let currentPid = startPid;
+  for (let depth = 0; depth < maxDepth && currentPid > 1; depth += 1) {
+    const info = readProcess(currentPid);
+    if (info === undefined) {
+      return false;
+    }
+
+    if (isClaudeExecutableCommand(info.command)) {
+      return hasClaudePrintFlag(info.command);
+    }
+
+    if (!Number.isInteger(info.parentPid) || info.parentPid <= 0 || info.parentPid === currentPid) {
+      return false;
+    }
+    currentPid = info.parentPid;
+  }
+
+  return false;
+};
+
+const isClaudeNonInteractivePayload = (payload: Record<string, unknown>, detectPrintMode: () => boolean): boolean => {
   const type = asNonEmptyString(payload.type);
   if (type !== "result") {
+    const hookEventName = asNonEmptyString(payload.hook_event_name);
+    if (hookEventName === "Stop" || hookEventName === "SubagentStop") {
+      return detectPrintMode();
+    }
     return false;
   }
 
@@ -891,7 +995,10 @@ const isClaudeNonInteractivePayload = (payload: Record<string, unknown>): boolea
   );
 };
 
-const loadClaudeContext = async (stdinOverride?: string): Promise<CodexContext | undefined> => {
+const loadClaudeContext = async (
+  stdinOverride?: string,
+  detectClaudePrintMode: () => boolean = detectClaudePrintModeFromProcessChain
+): Promise<CodexContext | undefined> => {
   const rawInput = typeof stdinOverride === "string" ? stdinOverride : await readStdin();
   const source = rawInput.trim();
   if (source.length === 0) {
@@ -914,7 +1021,7 @@ const loadClaudeContext = async (stdinOverride?: string): Promise<CodexContext |
       title: extractClaudeTitle(record),
       message: messageFromPayload ?? transcriptMessage,
       sound: resolveCodexSound(record),
-      isNonInteractive: isClaudeNonInteractivePayload(record)
+      isNonInteractive: isClaudeNonInteractivePayload(record, detectClaudePrintMode)
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -1289,6 +1396,7 @@ export const __internal = {
   resolveNotificationDetails,
   loadCodexContext,
   loadClaudeContext,
+  detectClaudePrintModeFromProcessChain,
   extractCodexMessage,
   resolveCodexSound
 };

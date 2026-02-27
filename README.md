@@ -153,7 +153,9 @@ For either flag the CLI looks for:
 - The most recent assistant message (from `notification-message`, `notification_message`, `last-assistant-message`, `message`, `messages`, `transcript`, or Claude transcripts)
 - Sound (`sound`, respecting `none`, `default`, or full paths such as `/System/Library/Sounds/Ping.aiff`)
 - Codex thread id (`thread-id`, `thread_id`, `threadId`) to support `--skip-codex-subagent` / `--skip-codex-non-interactive` (via `~/.codex/sessions` lookup)
-- Claude non-interactive result payload shape (`type: "result"`, `subtype`, `result`) to support `--skip-claude-non-interactive`
+- Claude non-interactive payload detection for both:
+  - print-mode result payloads (`type: "result"`, `subtype`, `result`)
+  - `Stop` / `SubagentStop` hook payloads when the parent Claude process is running with `-p` / `--print`
 
 To enable automatic notifications from Codex CLI/agents, add the following to `~/.codex/config.toml`:
 
