@@ -12,7 +12,9 @@ export type CliOptions = {
   readonly notifier: NotifierKind;
   readonly codex: boolean;
   readonly skipCodexSubagent: boolean;
+  readonly skipCodexNonInteractive: boolean;
   readonly claude: boolean;
+  readonly skipClaudeNonInteractive: boolean;
   readonly dryRun: boolean;
   readonly verbose: boolean;
   readonly logFile?: string;

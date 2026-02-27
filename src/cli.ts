@@ -41,6 +41,7 @@ type CodexContext = {
   readonly sound?: string;
   readonly threadId?: string;
   readonly isSubagent?: boolean;
+  readonly isNonInteractive?: boolean;
 };
 
 type ForwardCommand = {
@@ -326,7 +327,15 @@ const isSubagentSessionSource = (source: unknown): boolean => {
   );
 };
 
-const resolveCodexSubagentState = (threadId: string): boolean | undefined => {
+const isNonInteractiveSessionSource = (source: unknown): boolean => {
+  if (typeof source !== "string") {
+    return false;
+  }
+  const normalized = source.toLowerCase();
+  return normalized === "exec" || normalized === "review";
+};
+
+const resolveCodexSessionSource = (threadId: string): unknown => {
   const rolloutPath = findCodexSessionRolloutPath(threadId);
   if (typeof rolloutPath !== "string") {
     return undefined;
@@ -346,11 +355,22 @@ const resolveCodexSubagentState = (threadId: string): boolean | undefined => {
     if (payload === null || typeof payload !== "object") {
       return undefined;
     }
-    const source = (payload as { source?: unknown }).source;
-    return isSubagentSessionSource(source);
+    return (payload as { source?: unknown }).source;
   } catch {
     return undefined;
   }
+};
+
+const resolveCodexSessionContext = (threadId: string): Pick<CodexContext, "isSubagent" | "isNonInteractive"> => {
+  const source = resolveCodexSessionSource(threadId);
+  if (source === undefined) {
+    return {};
+  }
+
+  return {
+    isSubagent: isSubagentSessionSource(source),
+    isNonInteractive: isNonInteractiveSessionSource(source)
+  };
 };
 
 const optionsWithValue = new Set<string>([
@@ -365,7 +385,15 @@ const optionsWithValue = new Set<string>([
   "--log-file"
 ]);
 
-const flagOnlyOptions = new Set<string>(["--codex", "--skip-codex-subagent", "--claude", "--dry-run", "--verbose"]);
+const flagOnlyOptions = new Set<string>([
+  "--codex",
+  "--skip-codex-subagent",
+  "--skip-codex-non-interactive",
+  "--claude",
+  "--skip-claude-non-interactive",
+  "--dry-run",
+  "--verbose"
+]);
 
 const formatUsage = (programName = "vde-notifier"): string =>
   [
@@ -382,7 +410,9 @@ const formatUsage = (programName = "vde-notifier"): string =>
     "                                         Notification backend",
     "  --codex                                Parse Codex payload",
     "  --skip-codex-subagent                  Skip notification for Codex subagent turns",
+    "  --skip-codex-non-interactive           Skip notifications for Codex non-interactive turns",
     "  --claude                               Parse Claude payload",
+    "  --skip-claude-non-interactive          Skip notifications for Claude non-interactive payloads",
     "  --dry-run                              Print payload without sending notification",
     "  --verbose                              Print diagnostic JSON logs",
     "  --log-file <path>                      Append diagnostic logs to file",
@@ -570,7 +600,15 @@ const cliArgsDef = {
     type: "boolean",
     default: false
   },
+  "skip-codex-non-interactive": {
+    type: "boolean",
+    default: false
+  },
   claude: {
+    type: "boolean",
+    default: false
+  },
+  "skip-claude-non-interactive": {
     type: "boolean",
     default: false
   },
@@ -687,12 +725,13 @@ const loadCodexContext = async (
     }
     const record = parsed as Record<string, unknown>;
     const threadId = extractCodexThreadId(record);
+    const sessionContext = typeof threadId === "string" ? resolveCodexSessionContext(threadId) : {};
     return {
       message: extractCodexMessage(record),
       title: defaultAgentTitle("codex"),
       sound: resolveCodexSound(record),
       threadId,
-      isSubagent: typeof threadId === "string" ? resolveCodexSubagentState(threadId) : undefined
+      ...sessionContext
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -832,7 +871,24 @@ const extractClaudeMessage = (payload: Record<string, unknown>): string | undefi
   if (typeof explicit === "string") {
     return explicit;
   }
+  const printResult = asNonEmptyString(payload.result);
+  if (typeof printResult === "string") {
+    return printResult;
+  }
   return extractCodexMessage(payload);
+};
+
+const isClaudeNonInteractivePayload = (payload: Record<string, unknown>): boolean => {
+  const type = asNonEmptyString(payload.type);
+  if (type !== "result") {
+    return false;
+  }
+
+  return (
+    typeof asNonEmptyString(payload.subtype) === "string" ||
+    Object.prototype.hasOwnProperty.call(payload, "result") ||
+    typeof payload.total_cost_usd === "number"
+  );
 };
 
 const loadClaudeContext = async (stdinOverride?: string): Promise<CodexContext | undefined> => {
@@ -857,7 +913,8 @@ const loadClaudeContext = async (stdinOverride?: string): Promise<CodexContext |
     return {
       title: extractClaudeTitle(record),
       message: messageFromPayload ?? transcriptMessage,
-      sound: resolveCodexSound(record)
+      sound: resolveCodexSound(record),
+      isNonInteractive: isClaudeNonInteractivePayload(record)
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -939,7 +996,9 @@ const cliSchema = z.object({
   notifier: notifierSchema,
   codex: z.boolean().default(false),
   skipCodexSubagent: z.boolean().default(false),
+  skipCodexNonInteractive: z.boolean().default(false),
   claude: z.boolean().default(false),
+  skipClaudeNonInteractive: z.boolean().default(false),
   dryRun: z.boolean().default(false),
   verbose: z.boolean().default(false),
   logFile: z
@@ -967,7 +1026,9 @@ const parseArguments = (args: readonly string[]): CliOptions => {
     notifier: parsedArgs.notifier,
     codex: parsedArgs.codex === true,
     skipCodexSubagent: parsedArgs["skip-codex-subagent"] === true,
+    skipCodexNonInteractive: parsedArgs["skip-codex-non-interactive"] === true,
     claude: parsedArgs.claude === true,
+    skipClaudeNonInteractive: parsedArgs["skip-claude-non-interactive"] === true,
     dryRun: parsedArgs["dry-run"] === true,
     verbose: parsedArgs.verbose === true,
     logFile: resolvedLogFile,
@@ -1076,6 +1137,26 @@ const runNotify = async (
       stage: "notify",
       skipped: true,
       reason: "codex-subagent",
+      context: agentContext
+    });
+    return 0;
+  }
+
+  if (options.codex && options.skipCodexNonInteractive && agentContext?.isNonInteractive === true) {
+    logVerbose(options.verbose, options.logFile, {
+      stage: "notify",
+      skipped: true,
+      reason: "codex-non-interactive",
+      context: agentContext
+    });
+    return 0;
+  }
+
+  if (options.claude && options.skipClaudeNonInteractive && agentContext?.isNonInteractive === true) {
+    logVerbose(options.verbose, options.logFile, {
+      stage: "notify",
+      skipped: true,
+      reason: "claude-non-interactive",
       context: agentContext
     });
     return 0;

@@ -219,6 +219,62 @@ describe("runNotify", () => {
     }
   });
 
+  it("skips notification for codex non-interactive sessions when configured", async () => {
+    const originalHome = process.env.HOME;
+    const tempHome = mkdtempSync(join(tmpdir(), "vde-notifier-codex-non-interactive-"));
+    process.env.HOME = tempHome;
+
+    try {
+      const threadId = "019c0b18-d734-71a2-a5ec-f662e62868de";
+      writeCodexSessionMeta(tempHome, threadId, "exec");
+      const payload = JSON.stringify({ "thread-id": threadId, message: "From non-interactive codex" });
+      const options: CliOptions = {
+        mode: "notify",
+        dryRun: false,
+        verbose: false,
+        codex: true,
+        skipCodexNonInteractive: true,
+        notifier: "terminal-notifier"
+      } as CliOptions;
+
+      const result = await __internal.runNotify(options, environmentReport, ["--codex", payload], "");
+
+      expect(result).toBe(0);
+      expect(sendNotificationMock).not.toHaveBeenCalled();
+      expect(resolveTmuxContextMock).not.toHaveBeenCalled();
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+      rmSync(tempHome, { recursive: true, force: true });
+    }
+  });
+
+  it("skips notification for claude non-interactive payloads when configured", async () => {
+    const payload = JSON.stringify({
+      type: "result",
+      subtype: "success",
+      result: "Hi",
+      session_id: "f4d9b71a-163f-4c3f-a921-e0f46a511c9a"
+    });
+    const options: CliOptions = {
+      mode: "notify",
+      dryRun: false,
+      verbose: false,
+      claude: true,
+      skipClaudeNonInteractive: true,
+      notifier: "terminal-notifier"
+    } as CliOptions;
+
+    const result = await __internal.runNotify(options, environmentReport, ["--claude"], payload);
+
+    expect(result).toBe(0);
+    expect(sendNotificationMock).not.toHaveBeenCalled();
+    expect(resolveTmuxContextMock).not.toHaveBeenCalled();
+  });
+
   it("forwards post-separator command with payload after sending notification", async () => {
     const payload = JSON.stringify({ message: "From forwarded payload", sound: "Glass" });
     const options: CliOptions = {
@@ -350,6 +406,16 @@ describe("parseArguments", () => {
   it("enables codex subagent skip flag", () => {
     const options = __internal.parseArguments(["--skip-codex-subagent"]);
     expect(options.skipCodexSubagent).toBe(true);
+  });
+
+  it("enables codex non-interactive skip flag", () => {
+    const options = __internal.parseArguments(["--skip-codex-non-interactive"]);
+    expect(options.skipCodexNonInteractive).toBe(true);
+  });
+
+  it("enables claude non-interactive skip flag", () => {
+    const options = __internal.parseArguments(["--skip-claude-non-interactive"]);
+    expect(options.skipClaudeNonInteractive).toBe(true);
   });
 
   it("defaults notifier to vde-notifier-app", () => {
@@ -525,6 +591,28 @@ describe("loadCodexContext", () => {
       rmSync(tempHome, { recursive: true, force: true });
     }
   });
+
+  it("detects non-interactive codex thread from sessions metadata", async () => {
+    const originalHome = process.env.HOME;
+    const tempHome = mkdtempSync(join(tmpdir(), "vde-notifier-codex-non-interactive-context-"));
+    process.env.HOME = tempHome;
+
+    try {
+      const threadId = "019c0b18-d734-71a2-a5ec-f662e62868de";
+      writeCodexSessionMeta(tempHome, threadId, "exec");
+      const payload = JSON.stringify({ "thread-id": threadId, message: "From non-interactive codex" });
+      const context = await __internal.loadCodexContext(["--codex", payload], "");
+      expect(context?.threadId).toBe(threadId);
+      expect(context?.isNonInteractive).toBe(true);
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+      rmSync(tempHome, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("loadClaudeContext", () => {
@@ -581,5 +669,17 @@ describe("loadClaudeContext", () => {
 
   it("throws on invalid Claude payload JSON", async () => {
     await expect(__internal.loadClaudeContext("{not-json}")).rejects.toThrow("Failed to parse Claude payload JSON:");
+  });
+
+  it("detects claude non-interactive payload", async () => {
+    const payload = JSON.stringify({
+      type: "result",
+      subtype: "success",
+      result: "Hi, how can I help you today?",
+      session_id: "f4d9b71a-163f-4c3f-a921-e0f46a511c9a"
+    });
+
+    const context = await __internal.loadClaudeContext(payload);
+    expect(context?.isNonInteractive).toBe(true);
   });
 });

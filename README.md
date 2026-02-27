@@ -58,7 +58,9 @@ vde-notifier --title "Build finished" --message "webpack completed"
 - `--sound <name>`: macOS system sound (for example, `Glass`, `Ping`). Use `None` for silence.
 - `--codex`: Consume Codex-style JSON (see below) from a trailing argument, `CODEX_NOTIFICATION_PAYLOAD`, or stdin (in that priority order) and build the notification from it.
 - `--skip-codex-subagent`: Skip sending notifications when Codex payload belongs to a subagent turn (`thread-id` lookup from `~/.codex/sessions`).
+- `--skip-codex-non-interactive`: Skip sending notifications for Codex non-interactive turns (`source: "exec"` in `~/.codex/sessions`, such as `codex exec` / `codex review`).
 - `--claude`: Consume Claude Code JSON piped on stdin (supports `transcript_path` to pull the latest assistant reply).
+- `--skip-claude-non-interactive`: Skip sending notifications when Claude non-interactive (`-p/--print --output-format json`) payloads are detected.
 - `--terminal <profile>`: Force a terminal profile (alacritty, wezterm, ghostty, etc.).
 - `--term-bundle-id <bundleId>`: Override the bundle identifier when auto detection is insufficient.
 - `--notifier <terminal-notifier|swiftdialog|vde-notifier-app>`: Switch the notification backend. Defaults to `vde-notifier-app`.
@@ -150,7 +152,8 @@ For either flag the CLI looks for:
 - Title (`notification-title`, `notification_title`, `title`)
 - The most recent assistant message (from `notification-message`, `notification_message`, `last-assistant-message`, `message`, `messages`, `transcript`, or Claude transcripts)
 - Sound (`sound`, respecting `none`, `default`, or full paths such as `/System/Library/Sounds/Ping.aiff`)
-- Codex thread id (`thread-id`, `thread_id`, `threadId`) to support `--skip-codex-subagent`
+- Codex thread id (`thread-id`, `thread_id`, `threadId`) to support `--skip-codex-subagent` / `--skip-codex-non-interactive` (via `~/.codex/sessions` lookup)
+- Claude non-interactive result payload shape (`type: "result"`, `subtype`, `result`) to support `--skip-claude-non-interactive`
 
 To enable automatic notifications from Codex CLI/agents, add the following to `~/.codex/config.toml`:
 
