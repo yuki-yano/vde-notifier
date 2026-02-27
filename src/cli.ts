@@ -16,6 +16,7 @@ import {
 import { z } from "zod";
 import { parseArgs, type ArgsDef } from "citty";
 import { bold, red } from "kleur/colors";
+import { execa } from "execa";
 import type {
   CliOptions,
   EnvironmentReport,
@@ -40,6 +41,11 @@ type CodexContext = {
   readonly sound?: string;
   readonly threadId?: string;
   readonly isSubagent?: boolean;
+};
+
+type ForwardCommand = {
+  readonly executable: string;
+  readonly args: readonly string[];
 };
 
 const resolveRepositoryDisplayName = (): string => {
@@ -381,6 +387,7 @@ const formatUsage = (programName = "vde-notifier"): string =>
     "  --verbose                              Print diagnostic JSON logs",
     "  --log-file <path>                      Append diagnostic logs to file",
     "  --payload <base64>                     Focus payload for --mode focus",
+    "  -- <command> [args...]                 Run command after notification with forwarded args",
     "  --help, -h                             Show help",
     "  --version, -v                          Show version"
   ].join("\n");
@@ -594,9 +601,19 @@ const cliArgsDef = {
 } satisfies ArgsDef;
 
 const extractCodexArg = (args: readonly string[]): string | undefined => {
+  const forward = resolveForwardCommand(args);
+  if (forward !== undefined && forward.args.length > 0) {
+    const forwardedCandidate = forward.args[forward.args.length - 1];
+    if (typeof forwardedCandidate === "string" && forwardedCandidate.trim().length > 0) {
+      return forwardedCandidate;
+    }
+  }
+
+  const separatorIndex = args.indexOf("--");
+  const limit = separatorIndex >= 0 ? separatorIndex : args.length;
   const candidates: string[] = [];
 
-  for (let index = 0; index < args.length; index += 1) {
+  for (let index = 0; index < limit; index += 1) {
     const token = args[index];
     if (!token.startsWith("--")) {
       candidates.push(token);
@@ -613,9 +630,38 @@ const extractCodexArg = (args: readonly string[]): string | undefined => {
       }
       continue;
     }
+
+    const [tokenKey] = token.split("=", 2);
+    if (typeof tokenKey === "string" && optionsWithValue.has(tokenKey)) {
+      continue;
+    }
   }
 
-  return candidates.find((candidate) => candidate.trim().length > 0);
+  for (let index = candidates.length - 1; index >= 0; index -= 1) {
+    const candidate = candidates[index];
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+};
+
+const resolveForwardCommand = (args: readonly string[]): ForwardCommand | undefined => {
+  const separatorIndex = args.indexOf("--");
+  if (separatorIndex < 0 || separatorIndex >= args.length - 1) {
+    return undefined;
+  }
+
+  const executable = args[separatorIndex + 1];
+  if (typeof executable !== "string" || executable.trim().length === 0) {
+    return undefined;
+  }
+
+  return {
+    executable,
+    args: args.slice(separatorIndex + 2)
+  };
 };
 
 const loadCodexContext = async (
@@ -1065,6 +1111,7 @@ const runNotify = async (
   }
 
   const soundName = notification.sound;
+  const forward = resolveForwardCommand(rawArgs);
 
   logVerbose(options.verbose, options.logFile, {
     stage: "notify",
@@ -1084,6 +1131,15 @@ const runNotify = async (
     focusCommand,
     sound: soundName
   });
+
+  if (forward !== undefined) {
+    logVerbose(options.verbose, options.logFile, {
+      stage: "forward",
+      executable: forward.executable,
+      args: forward.args
+    });
+    await execa(forward.executable, [...forward.args], { stdio: "inherit" });
+  }
 
   return 0;
 };

@@ -5,6 +5,10 @@ import { tmpdir } from "node:os";
 import type { CliOptions, EnvironmentReport, FocusCommand, FocusPayload, TerminalProfile, TmuxContext } from "./types";
 import { __internal } from "./cli";
 
+vi.mock("execa", () => ({
+  execa: vi.fn()
+}));
+
 vi.mock("./tmux/query", () => ({
   resolveTmuxContext: vi.fn()
 }));
@@ -34,6 +38,7 @@ const sendNotificationMock = vi.mocked(await import("./notify/send")).sendNotifi
 const buildFocusCommandMock = vi.mocked(await import("./utils/payload")).buildFocusCommand;
 const parseFocusPayloadMock = vi.mocked(await import("./utils/payload")).parseFocusPayload;
 const focusPaneMock = vi.mocked(await import("./tmux/control")).focusPane;
+const execaMock = vi.mocked(await import("execa")).execa;
 
 const sampleTmux: TmuxContext = {
   tmuxBin: "/opt/homebrew/bin/tmux",
@@ -99,6 +104,7 @@ beforeEach(() => {
   resolveTerminalProfileMock.mockReturnValue(sampleTerminal);
   buildFocusCommandMock.mockReturnValue(focusCommand);
   parseFocusPayloadMock.mockReturnValue(samplePayload);
+  execaMock.mockResolvedValue({} as Awaited<ReturnType<typeof execaMock>>);
   delete process.env.VDE_NOTIFIER_TERMINAL;
   delete process.env.CODEX_NOTIFICATION_PAYLOAD;
   delete process.env.CODEX_NOTIFICATION_SOUND;
@@ -211,6 +217,28 @@ describe("runNotify", () => {
       }
       rmSync(tempHome, { recursive: true, force: true });
     }
+  });
+
+  it("forwards post-separator command with payload after sending notification", async () => {
+    const payload = JSON.stringify({ message: "From forwarded payload", sound: "Glass" });
+    const options: CliOptions = {
+      mode: "notify",
+      dryRun: false,
+      verbose: false,
+      codex: true,
+      notifier: "terminal-notifier"
+    } as CliOptions;
+
+    const result = await __internal.runNotify(
+      options,
+      environmentReport,
+      ["--codex", "--", "other-command", payload],
+      ""
+    );
+
+    expect(result).toBe(0);
+    expect(sendNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ message: "From forwarded payload" }));
+    expect(execaMock).toHaveBeenCalledWith("other-command", [payload], { stdio: "inherit" });
   });
 });
 
@@ -381,6 +409,7 @@ describe("control options", () => {
   it("formats usage output", () => {
     const usage = __internal.formatUsage("vde-notifier");
     expect(usage).toContain("Usage: vde-notifier [options]");
+    expect(usage).toContain("-- <command> [args...]");
     expect(usage).toContain("--help, -h");
     expect(usage).toContain("--version, -v");
   });
@@ -446,6 +475,13 @@ describe("loadCodexContext", () => {
     const result = await __internal.loadCodexContext(rawArgs, "");
     expect(result?.message).toBe("From arg");
     expect(result?.sound).toBe("Glass");
+  });
+
+  it("extracts payload argument from forwarded command chain", async () => {
+    const payload = '{"message":"From forwarded args","sound":"Ping"}';
+    const result = await __internal.loadCodexContext(["--codex", "--", "other-command", payload], "");
+    expect(result?.message).toBe("From forwarded args");
+    expect(result?.sound).toBe("Ping");
   });
 
   it("falls back to environment variable when neither stdin nor args provide JSON", async () => {
