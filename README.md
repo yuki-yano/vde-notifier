@@ -67,7 +67,7 @@ vde-notifier --title "Build finished" --message "webpack completed"
 - `--dry-run`: Skips sending a notification. Combine with `--verbose` to print the gathered tmux metadata and focus command.
 - `--verbose`: Emits JSON logs describing notify and focus stages.
 - `--log-file <path>`: Appends the same JSON diagnostics to the given file (one JSON object per line). Also propagates to focus-mode invocations.
-- `-- <command> [args...]`: After sending the notification, execute another command and forward runtime arguments (for example, Codex payload JSON) to it.
+- `-- <command> [args...]`: After sending the notification, execute another command and forward runtime arguments to it. With `--codex`, the resolved payload is also forwarded as the final argument.
 - `--help`, `-h`: Show usage.
 - `--version`, `-v`: Show CLI version.
 
@@ -142,7 +142,7 @@ vde-notifier hydrates notifications from agent payloads in two ways:
 - `--codex`: pass a Codex-style JSON payload as the final argument (the format used by hosted Codex agents). You can also preload the same JSON via `CODEX_NOTIFICATION_PAYLOAD`; if neither is present, stdin is used.
 - `--claude`: pipe Claude Code's JSON payload to stdin. If the payload contains `transcript_path`, vde-notifier opens the referenced transcript JSONL file and uses the latest assistant message.
 
-When using command chaining (`-- <command> [args...]`) with `--codex`, vde-notifier treats the last forwarded argument as the Codex payload JSON, sends the notification first, then executes the chained command with the same forwarded arguments.
+When using command chaining (`-- <command> [args...]`) with `--codex`, vde-notifier resolves the Codex payload from the final argument, `CODEX_NOTIFICATION_PAYLOAD`, or stdin using the same priority as notification generation. It sends the notification first, then executes the chained command with the same forwarded arguments and appends the resolved payload as the final argument when it came from the environment or stdin. If the final forwarded argument already is the payload JSON, it is reused and not appended twice.
 
 Codex notifications always use the repository-scoped title `Codex: <repo-name>`, ignoring payload-provided titles. Claude notifications fall back to `Claude: <repo-name>` when no explicit title is supplied.
 If either payload is malformed JSON, the command exits with a non-zero status.
@@ -163,7 +163,7 @@ To enable automatic notifications from Codex CLI/agents, add the following to `~
 notify = ["bun", "x", "vde-notifier@latest", "--codex"]
 ```
 
-If you also want to run another command from the same notify hook while keeping the same Codex payload argument:
+If you also want to run another command from the same notify hook while keeping the same Codex payload for the chained command:
 
 ```toml
 notify = ["bun", "x", "vde-notifier@latest", "--codex", "--", "other-command"]
@@ -175,7 +175,7 @@ At runtime this behaves like:
 bun x vde-notifier@latest --codex -- other-command '{"message":"..."}'
 ```
 
-`vde-notifier` sends the notification first, then runs `other-command '{"message":"..."}'`.
+The chained command receives the same resolved payload even when the notify hook supplied it via `CODEX_NOTIFICATION_PAYLOAD` or stdin. If you already passed the payload as the final forwarded argument, `vde-notifier` keeps the existing argument list unchanged.
 
 For Claude Code (Claude Desktop) projects, add a Stop hook to `~/.config/claude/settings.json` so every long-running tool run triggers a notification when it finishes:
 

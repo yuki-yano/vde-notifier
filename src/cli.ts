@@ -37,6 +37,7 @@ import { focusPane } from "./tmux/control";
 const MODES = ["notify", "focus"] as const;
 
 type CodexContext = {
+  readonly rawPayload?: string;
   readonly title?: string;
   readonly message?: string;
   readonly sound?: string;
@@ -709,18 +710,18 @@ const loadCodexContext = async (
 ): Promise<CodexContext | undefined> => {
   const envPayload = asNonEmptyString(processEnv.CODEX_NOTIFICATION_PAYLOAD);
   const argPayload = extractCodexArg(rawArgs);
-  let payload = argPayload ?? envPayload;
-  if (payload === undefined) {
+  let rawPayload = argPayload ?? envPayload;
+  if (rawPayload === undefined) {
     const rawInput = typeof stdinOverride === "string" ? stdinOverride : await readStdin();
-    payload = rawInput.length > 0 ? rawInput : undefined;
+    rawPayload = rawInput.length > 0 ? rawInput : undefined;
   }
 
-  if (payload === undefined || payload.length === 0) {
+  if (rawPayload === undefined || rawPayload.length === 0) {
     return undefined;
   }
 
   try {
-    const parsed = JSON.parse(payload);
+    const parsed = JSON.parse(rawPayload);
     if (parsed === null || typeof parsed !== "object") {
       return undefined;
     }
@@ -728,6 +729,7 @@ const loadCodexContext = async (
     const threadId = extractCodexThreadId(record);
     const sessionContext = typeof threadId === "string" ? resolveCodexSessionContext(threadId) : {};
     return {
+      rawPayload,
       message: extractCodexMessage(record),
       title: defaultAgentTitle("codex"),
       sound: resolveCodexSound(record),
@@ -1300,6 +1302,10 @@ const runNotify = async (
 
   const soundName = notification.sound;
   const forward = resolveForwardCommand(rawArgs);
+  const forwardArgs =
+    options.codex && forward !== undefined && forward.args.length === 0 && typeof agentContext?.rawPayload === "string"
+      ? [agentContext.rawPayload]
+      : forward?.args;
 
   logVerbose(options.verbose, options.logFile, {
     stage: "notify",
@@ -1324,9 +1330,9 @@ const runNotify = async (
     logVerbose(options.verbose, options.logFile, {
       stage: "forward",
       executable: forward.executable,
-      args: forward.args
+      args: forwardArgs
     });
-    await execa(forward.executable, [...forward.args], { stdio: "inherit" });
+    await execa(forward.executable, [...(forwardArgs ?? [])], { stdio: "inherit" });
   }
 
   return 0;

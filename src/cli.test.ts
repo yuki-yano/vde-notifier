@@ -296,6 +296,41 @@ describe("runNotify", () => {
     expect(sendNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ message: "From forwarded payload" }));
     expect(execaMock).toHaveBeenCalledWith("other-command", [payload], { stdio: "inherit" });
   });
+
+  it("forwards stdin codex payload to chained command after sending notification", async () => {
+    const payload = JSON.stringify({ message: "From stdin payload", sound: "Glass" });
+    const options: CliOptions = {
+      mode: "notify",
+      dryRun: false,
+      verbose: false,
+      codex: true,
+      notifier: "terminal-notifier"
+    } as CliOptions;
+
+    const result = await __internal.runNotify(options, environmentReport, ["--codex", "--", "other-command"], payload);
+
+    expect(result).toBe(0);
+    expect(sendNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ message: "From stdin payload" }));
+    expect(execaMock).toHaveBeenCalledWith("other-command", [payload], { stdio: "inherit" });
+  });
+
+  it("forwards environment codex payload to chained command after sending notification", async () => {
+    const payload = JSON.stringify({ message: "From env payload", sound: "Ping" });
+    process.env.CODEX_NOTIFICATION_PAYLOAD = payload;
+    const options: CliOptions = {
+      mode: "notify",
+      dryRun: false,
+      verbose: false,
+      codex: true,
+      notifier: "terminal-notifier"
+    } as CliOptions;
+
+    const result = await __internal.runNotify(options, environmentReport, ["--codex", "--", "other-command"], "");
+
+    expect(result).toBe(0);
+    expect(sendNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ message: "From env payload" }));
+    expect(execaMock).toHaveBeenCalledWith("other-command", [payload], { stdio: "inherit" });
+  });
 });
 
 describe("runFocus", () => {
