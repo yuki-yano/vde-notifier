@@ -641,14 +641,6 @@ const cliArgsDef = {
 } satisfies ArgsDef;
 
 const extractCodexArg = (args: readonly string[]): string | undefined => {
-  const forward = resolveForwardCommand(args);
-  if (forward !== undefined && forward.args.length > 0) {
-    const forwardedCandidate = forward.args[forward.args.length - 1];
-    if (typeof forwardedCandidate === "string" && forwardedCandidate.trim().length > 0) {
-      return forwardedCandidate;
-    }
-  }
-
   const separatorIndex = args.indexOf("--");
   const limit = separatorIndex >= 0 ? separatorIndex : args.length;
   const candidates: string[] = [];
@@ -681,6 +673,27 @@ const extractCodexArg = (args: readonly string[]): string | undefined => {
     const candidate = candidates[index];
     if (typeof candidate === "string" && candidate.trim().length > 0) {
       return candidate;
+    }
+  }
+
+  const forward = resolveForwardCommand(args);
+  if (forward === undefined) {
+    return undefined;
+  }
+
+  for (let index = forward.args.length - 1; index >= 0; index -= 1) {
+    const candidate = forward.args[index];
+    if (typeof candidate !== "string" || candidate.trim().length === 0) {
+      continue;
+    }
+
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed !== null && typeof parsed === "object") {
+        return candidate;
+      }
+    } catch {
+      continue;
     }
   }
 
@@ -740,6 +753,26 @@ const loadCodexContext = async (
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed to parse Codex payload JSON: ${message}`);
   }
+};
+
+const resolveForwardArgs = (
+  options: CliOptions,
+  forward: ForwardCommand | undefined,
+  agentContext: CodexContext | undefined
+): readonly string[] | undefined => {
+  if (forward === undefined) {
+    return undefined;
+  }
+
+  if (!options.codex || typeof agentContext?.rawPayload !== "string") {
+    return forward.args;
+  }
+
+  if (forward.args.includes(agentContext.rawPayload)) {
+    return forward.args;
+  }
+
+  return [...forward.args, agentContext.rawPayload];
 };
 
 const CLAUDE_DEFAULT_TITLE = defaultAgentTitle("claude");
@@ -1302,10 +1335,7 @@ const runNotify = async (
 
   const soundName = notification.sound;
   const forward = resolveForwardCommand(rawArgs);
-  const forwardArgs =
-    options.codex && forward !== undefined && forward.args.length === 0 && typeof agentContext?.rawPayload === "string"
-      ? [agentContext.rawPayload]
-      : forward?.args;
+  const forwardArgs = resolveForwardArgs(options, forward, agentContext);
 
   logVerbose(options.verbose, options.logFile, {
     stage: "notify",

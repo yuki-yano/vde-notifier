@@ -331,6 +331,51 @@ describe("runNotify", () => {
     expect(sendNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ message: "From env payload" }));
     expect(execaMock).toHaveBeenCalledWith("other-command", [payload], { stdio: "inherit" });
   });
+
+  it("appends stdin codex payload after chained command flags", async () => {
+    const payload = JSON.stringify({ message: "From stdin payload", sound: "Glass" });
+    const options: CliOptions = {
+      mode: "notify",
+      dryRun: false,
+      verbose: false,
+      codex: true,
+      notifier: "terminal-notifier"
+    } as CliOptions;
+
+    const result = await __internal.runNotify(
+      options,
+      environmentReport,
+      ["--codex", "--", "other-command", "--async"],
+      payload
+    );
+
+    expect(result).toBe(0);
+    expect(sendNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ message: "From stdin payload" }));
+    expect(execaMock).toHaveBeenCalledWith("other-command", ["--async", payload], { stdio: "inherit" });
+  });
+
+  it("appends environment codex payload after chained command flags", async () => {
+    const payload = JSON.stringify({ message: "From env payload", sound: "Ping" });
+    process.env.CODEX_NOTIFICATION_PAYLOAD = payload;
+    const options: CliOptions = {
+      mode: "notify",
+      dryRun: false,
+      verbose: false,
+      codex: true,
+      notifier: "terminal-notifier"
+    } as CliOptions;
+
+    const result = await __internal.runNotify(
+      options,
+      environmentReport,
+      ["--codex", "--", "other-command", "--async"],
+      ""
+    );
+
+    expect(result).toBe(0);
+    expect(sendNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ message: "From env payload" }));
+    expect(execaMock).toHaveBeenCalledWith("other-command", ["--async", payload], { stdio: "inherit" });
+  });
 });
 
 describe("runFocus", () => {
@@ -585,9 +630,23 @@ describe("loadCodexContext", () => {
     expect(result?.sound).toBe("Ping");
   });
 
+  it("extracts forwarded payload even when a downstream flag follows it", async () => {
+    const payload = '{"message":"From forwarded args","sound":"Ping"}';
+    const result = await __internal.loadCodexContext(["--codex", "--", "other-command", payload, "--async"], "");
+    expect(result?.message).toBe("From forwarded args");
+    expect(result?.sound).toBe("Ping");
+  });
+
   it("falls back to environment variable when neither stdin nor args provide JSON", async () => {
     process.env.CODEX_NOTIFICATION_PAYLOAD = '{"message":"From env","sound":"Ping"}';
     const result = await __internal.loadCodexContext([], "");
+    expect(result?.message).toBe("From env");
+    expect(result?.sound).toBe("Ping");
+  });
+
+  it("uses environment payload when forwarded command only includes flags", async () => {
+    process.env.CODEX_NOTIFICATION_PAYLOAD = '{"message":"From env","sound":"Ping"}';
+    const result = await __internal.loadCodexContext(["--codex", "--", "other-command", "--async"], "");
     expect(result?.message).toBe("From env");
     expect(result?.sound).toBe("Ping");
   });
@@ -597,6 +656,16 @@ describe("loadCodexContext", () => {
     const result = await __internal.loadCodexContext([], '{"message":"From stdin","sound":"None"}');
     expect(result?.message).toBe("From env");
     expect(result?.sound).toBe("Ping");
+  });
+
+  it("uses stdin payload when forwarded command only includes flags and environment payload is absent", async () => {
+    process.env.CODEX_NOTIFICATION_PAYLOAD = "";
+    const result = await __internal.loadCodexContext(
+      ["--codex", "--", "other-command", "--async"],
+      '{"message":"From stdin","sound":"None"}'
+    );
+    expect(result?.message).toBe("From stdin");
+    expect(result?.sound).toBe("None");
   });
 
   it("throws on invalid codex JSON payload", async () => {
