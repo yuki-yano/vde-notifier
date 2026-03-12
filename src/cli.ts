@@ -96,6 +96,11 @@ const extractCodexMessage = (payload: Record<string, unknown>): string | undefin
     return direct;
   }
 
+  const lastAgentMessage = asNonEmptyString((payload as { last_agent_message?: unknown }).last_agent_message);
+  if (typeof lastAgentMessage === "string") {
+    return lastAgentMessage;
+  }
+
   const messageField = asNonEmptyString(payload.message);
   if (typeof messageField === "string") {
     return messageField;

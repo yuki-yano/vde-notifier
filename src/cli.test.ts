@@ -332,6 +332,32 @@ describe("runNotify", () => {
     expect(execaMock).toHaveBeenCalledWith("other-command", [payload], { stdio: "inherit" });
   });
 
+  it("uses last_agent_message for task_complete codex notifications", async () => {
+    const payload = JSON.stringify({
+      type: "task_complete",
+      turn_id: "019ce08c-d0ba-74a1-97e1-8cf09c0aebb7",
+      last_agent_message: "どこの天気を見ればいいですか？",
+      cwd: "/Users/yuki-yano/repos/github.com/yuki-yano/vde-monitor"
+    });
+    const options: CliOptions = {
+      mode: "notify",
+      dryRun: false,
+      verbose: false,
+      codex: true,
+      notifier: "terminal-notifier"
+    } as CliOptions;
+
+    const result = await __internal.runNotify(options, environmentReport, ["--codex"], payload);
+
+    expect(result).toBe(0);
+    expect(sendNotificationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "どこの天気を見ればいいですか？" })
+    );
+    expect(sendNotificationMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: `cmd: ${sampleTmux.paneCurrentCommand} | tty: ${sampleTmux.clientTTY}` })
+    );
+  });
+
   it("appends stdin codex payload after chained command flags", async () => {
     const payload = JSON.stringify({ message: "From stdin payload", sound: "Glass" });
     const options: CliOptions = {
@@ -608,6 +634,16 @@ describe("loadCodexContext", () => {
     expect(result?.title).toBe(expectedTitle);
   });
 
+  it("extracts message from task_complete payload last_agent_message", async () => {
+    const json = JSON.stringify({
+      type: "task_complete",
+      turn_id: "019ce08c-d0ba-74a1-97e1-8cf09c0aebb7",
+      last_agent_message: "どこの天気を見ればいいですか？"
+    });
+    const result = await __internal.loadCodexContext([], json);
+    expect(result?.message).toBe("どこの天気を見ればいいですか？");
+  });
+
   it("ignores Codex payload title overrides", async () => {
     const json = JSON.stringify({ title: "Terminal", message: "Complete" });
     const result = await __internal.loadCodexContext([], json);
@@ -716,6 +752,44 @@ describe("loadCodexContext", () => {
       }
       rmSync(tempHome, { recursive: true, force: true });
     }
+  });
+
+  it("resolves session context from task_complete payload thread_id while keeping last_agent_message", async () => {
+    const originalHome = process.env.HOME;
+    const tempHome = mkdtempSync(join(tmpdir(), "vde-notifier-codex-task-complete-context-"));
+    process.env.HOME = tempHome;
+
+    try {
+      const threadId = "019c0b18-d734-71a2-a5ec-f662e62868de";
+      writeCodexSessionMeta(tempHome, threadId, "exec");
+      const payload = JSON.stringify({
+        type: "task_complete",
+        turn_id: "019ce08c-d0ba-74a1-97e1-8cf09c0aebb7",
+        thread_id: threadId,
+        last_agent_message: "どこの天気を見ればいいですか？"
+      });
+      const context = await __internal.loadCodexContext(["--codex", payload], "");
+      expect(context?.threadId).toBe(threadId);
+      expect(context?.message).toBe("どこの天気を見ればいいですか？");
+      expect(context?.isNonInteractive).toBe(true);
+    } finally {
+      if (originalHome === undefined) {
+        delete process.env.HOME;
+      } else {
+        process.env.HOME = originalHome;
+      }
+      rmSync(tempHome, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("extractCodexMessage", () => {
+  it("prefers last-assistant-message over last_agent_message", () => {
+    const message = __internal.extractCodexMessage({
+      "last-assistant-message": "Legacy assistant message",
+      last_agent_message: "Current agent message"
+    });
+    expect(message).toBe("Legacy assistant message");
   });
 });
 
