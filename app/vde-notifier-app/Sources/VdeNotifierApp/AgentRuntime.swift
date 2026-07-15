@@ -52,7 +52,26 @@ final class ActionStore: @unchecked Sendable {
         createdAt: iso8601Now()
       )
       let data = try encoder.encode(stored)
-      try data.write(to: fileURL, options: .atomic)
+      let temporaryURL = directoryURL.appendingPathComponent(".\(requestId).\(UUID().uuidString).tmp")
+      guard FileManager.default.createFile(atPath: temporaryURL.path, contents: nil) else {
+        throw CocoaError(.fileWriteUnknown)
+      }
+      var didMoveActionFile = false
+      do {
+        let handle = try FileHandle(forWritingTo: temporaryURL)
+        try handle.write(contentsOf: data)
+        try handle.synchronize()
+        try handle.close()
+        try FileManager.default.moveItem(at: temporaryURL, to: fileURL)
+        didMoveActionFile = true
+        try synchronizeDirectory()
+      } catch {
+        try? FileManager.default.removeItem(at: temporaryURL)
+        if didMoveActionFile {
+          try? FileManager.default.removeItem(at: fileURL)
+        }
+        throw error
+      }
     }
   }
 
@@ -78,22 +97,20 @@ final class ActionStore: @unchecked Sendable {
   }
 
   func pruneExpired() throws {
-    try queue.sync {
-      guard FileManager.default.fileExists(atPath: directoryURL.path) else {
-        return
-      }
-      let threshold = Date().addingTimeInterval(-Self.actionRetentionInterval)
-      let files = try FileManager.default.contentsOfDirectory(
-        at: directoryURL,
-        includingPropertiesForKeys: [.contentModificationDateKey],
-        options: [.skipsHiddenFiles]
-      )
-      for fileURL in files where fileURL.pathExtension == "json" {
-        let modificationDate = try fileURL.resourceValues(forKeys: [.contentModificationDateKey])
-          .contentModificationDate
-        if let modificationDate, modificationDate < threshold {
-          try FileManager.default.removeItem(at: fileURL)
-        }
+    guard FileManager.default.fileExists(atPath: directoryURL.path) else {
+      return
+    }
+    let threshold = Date().addingTimeInterval(-Self.actionRetentionInterval)
+    let files = try FileManager.default.contentsOfDirectory(
+      at: directoryURL,
+      includingPropertiesForKeys: [.contentModificationDateKey],
+      options: [.skipsHiddenFiles]
+    )
+    for fileURL in files where fileURL.pathExtension == "json" {
+      let modificationDate = try fileURL.resourceValues(forKeys: [.contentModificationDateKey])
+        .contentModificationDate
+      if let modificationDate, modificationDate < threshold {
+        try? FileManager.default.removeItem(at: fileURL)
       }
     }
   }
@@ -108,14 +125,60 @@ final class ActionStore: @unchecked Sendable {
     }
     return directoryURL.appendingPathComponent("\(uuid.uuidString.lowercased()).json", isDirectory: false)
   }
+
+  private func synchronizeDirectory() throws {
+    let fd = Darwin.open(directoryURL.path, O_RDONLY)
+    guard fd >= 0 else {
+      throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+    defer { Darwin.close(fd) }
+    guard Darwin.fsync(fd) == 0 else {
+      throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
+  }
+}
+
+func diagnoseActionStoreWriteAccess(at directoryURL: URL) -> Bool {
+  let probeURL = directoryURL.appendingPathComponent(".doctor-\(UUID().uuidString).tmp", isDirectory: false)
+  do {
+    try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+    try Data("write-check".utf8).write(to: probeURL, options: .withoutOverwriting)
+    try FileManager.default.removeItem(at: probeURL)
+    return true
+  } catch {
+    try? FileManager.default.removeItem(at: probeURL)
+    return false
+  }
+}
+
+func makeActionCleanupTimer(
+  actionStore: ActionStore,
+  interval: TimeInterval,
+  onError: @escaping @Sendable (Error) -> Void
+) -> DispatchSourceTimer {
+  let queue = DispatchQueue(label: "com.yuki-yano.vde-notifier-app.agent-maintenance")
+  let timer = DispatchSource.makeTimerSource(queue: queue)
+  let boundedInterval = max(interval, 0.001)
+  timer.schedule(deadline: .now() + boundedInterval, repeating: boundedInterval)
+  timer.setEventHandler {
+    do {
+      try actionStore.pruneExpired()
+    } catch {
+      onError(error)
+    }
+  }
+  timer.resume()
+  return timer
 }
 
 final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate {
-  private let center = UNUserNotificationCenter.current()
+  private lazy var center = UNUserNotificationCenter.current()
   private let socketPath: String
   private let actionStore: ActionStore
   private let logURL: URL
   private let logQueue = DispatchQueue(label: "com.yuki-yano.vde-notifier-app.agent-log")
+  private let actionCleanupInterval: TimeInterval
+  private var cleanupTimer: DispatchSourceTimer?
   private var serverFD: Int32 = -1
   private var lockFD: Int32 = -1
   private let serverQueue = DispatchQueue(label: "com.yuki-yano.vde-notifier-app.agent-server")
@@ -127,19 +190,25 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   private static let categoryIdentifier = "com.yuki-yano.vde-notifier-app.focus"
   private static let actionIdentifier = "focus-return"
 
-  init(socketPath: String, actionStoreURL: URL, logURL: URL) {
+  init(
+    socketPath: String,
+    actionStoreURL: URL,
+    logURL: URL,
+    actionCleanupInterval: TimeInterval = 60 * 60
+  ) {
     self.socketPath = socketPath
     actionStore = ActionStore(directoryURL: actionStoreURL)
     self.logURL = logURL
+    self.actionCleanupInterval = actionCleanupInterval
     super.init()
   }
 
   func start() throws {
-    center.delegate = self
-    registerNotificationCategory()
-    try actionStore.pruneExpired()
     lockFD = try acquireAgentLock(path: "\(socketPath).lock")
     do {
+      center.delegate = self
+      registerNotificationCategory()
+      try actionStore.pruneExpired()
       if FileManager.default.fileExists(atPath: socketPath) {
         if AgentBootstrap.isRunning(socketPath: socketPath) {
           throw UnixSocketError.lockUnavailable("\(socketPath).lock")
@@ -147,6 +216,10 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
         try removeOwnedStaleSocket(path: socketPath)
       }
       serverFD = try makeListeningUnixSocket(path: socketPath)
+      cleanupTimer = makeActionCleanupTimer(actionStore: actionStore, interval: actionCleanupInterval) {
+        [weak self] error in
+        self?.appendAgentLog(event: "action_cleanup_failed", error: error)
+      }
     } catch {
       Darwin.close(lockFD)
       lockFD = -1
@@ -158,6 +231,8 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   }
 
   func stop() {
+    cleanupTimer?.cancel()
+    cleanupTimer = nil
     if serverFD >= 0 {
       Darwin.close(serverFD)
       serverFD = -1
@@ -347,13 +422,15 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
     }
   }
 
-  private func appendAgentLog(event: String, requestId: String, error: Error) {
-    let entry: [String: String] = [
+  private func appendAgentLog(event: String, requestId: String? = nil, error: Error) {
+    var entry: [String: String] = [
       "timestamp": ISO8601DateFormatter().string(from: Date()),
       "event": event,
-      "request_id": requestId,
       "error": String(describing: error),
     ]
+    if let requestId {
+      entry["request_id"] = requestId
+    }
     guard let data = try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys]) else {
       return
     }

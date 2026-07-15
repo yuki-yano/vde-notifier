@@ -137,6 +137,7 @@ struct VdeNotifierAppMain {
     let report: [String: Any] = [
       "running": AgentBootstrap.isRunning(socketPath: AppPaths.socketURL().path),
       "authorization": authorizationLabel(authorization.get()),
+      "actions_writable": diagnoseActionStoreWriteAccess(at: AppPaths.actionsDirectoryURL()),
       "socket_path": AppPaths.socketURL().path,
       "actions_path": AppPaths.actionsDirectoryURL().path
     ]

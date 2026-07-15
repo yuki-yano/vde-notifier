@@ -94,6 +94,17 @@ final class ActionStoreTests: XCTestCase {
     XCTAssertEqual(try store.take(requestId: recentId), action)
   }
 
+  func testDoctorWriteAccessChecksTheDirectory() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    XCTAssertTrue(diagnoseActionStoreWriteAccess(at: directory))
+
+    let invalidDirectory = directory.appendingPathComponent("not-a-directory")
+    try Data("file".utf8).write(to: invalidDirectory)
+    XCTAssertFalse(diagnoseActionStoreWriteAccess(at: invalidDirectory))
+  }
+
   private func makeTemporaryDirectory() -> URL {
     FileManager.default.temporaryDirectory
       .appendingPathComponent("vde-notifier-app-action-store-tests", isDirectory: true)
@@ -269,24 +280,7 @@ final class UnixSocketTests: XCTestCase {
   func testAgentLockRejectsSecondOwner() throws {
     let socketPath = makeSocketPath()
     let lockPath = "\(socketPath).lock"
-    let readyPipe = Pipe()
-    let child = Process()
-    child.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-    child.arguments = [
-      "-c",
-      """
-      import fcntl, os, sys, time
-      fd = os.open(sys.argv[1], os.O_CREAT | os.O_RDWR, 0o600)
-      fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-      sys.stdout.buffer.write(b"1")
-      sys.stdout.buffer.flush()
-      time.sleep(5)
-      """,
-      lockPath,
-    ]
-    child.standardOutput = readyPipe
-    child.standardError = FileHandle.nullDevice
-    try child.run()
+    let child = try startLockHolder(lockPath: lockPath)
     defer {
       if child.isRunning {
         child.terminate()
@@ -295,13 +289,70 @@ final class UnixSocketTests: XCTestCase {
       unlink(lockPath)
     }
 
-    XCTAssertEqual(readyPipe.fileHandleForReading.readData(ofLength: 1), Data("1".utf8))
-
     XCTAssertThrowsError(try acquireAgentLock(path: lockPath)) { error in
       guard case UnixSocketError.lockUnavailable = error else {
         return XCTFail("Unexpected error: \(error)")
       }
     }
+  }
+
+  func testSecondRuntimeDoesNotPruneActionsBeforeAcquiringLock() throws {
+    let socketPath = makeSocketPath()
+    let baseDirectory = URL(fileURLWithPath: socketPath).deletingLastPathComponent()
+    let actionsDirectory = baseDirectory.appendingPathComponent("actions", isDirectory: true)
+    let logURL = baseDirectory.appendingPathComponent("agent.log", isDirectory: false)
+    let store = ActionStore(directoryURL: actionsDirectory)
+    let requestId = UUID().uuidString.lowercased()
+    let action = ActionPayload(executable: "/usr/bin/say", arguments: ["keep"])
+    try store.save(requestId: requestId, action: action)
+    try FileManager.default.setAttributes(
+      [.modificationDate: Date().addingTimeInterval(-(60 * 60 * 24 * 8))],
+      ofItemAtPath: actionURL(directory: actionsDirectory, requestId: requestId).path
+    )
+
+    let lockPath = "\(socketPath).lock"
+    let child = try startLockHolder(lockPath: lockPath)
+    defer {
+      if child.isRunning {
+        child.terminate()
+      }
+      child.waitUntilExit()
+      try? FileManager.default.removeItem(at: baseDirectory)
+    }
+
+    let runtime = NotificationAgentRuntime(socketPath: socketPath, actionStoreURL: actionsDirectory, logURL: logURL)
+    XCTAssertThrowsError(try runtime.start()) { error in
+      guard case UnixSocketError.lockUnavailable = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+    }
+    XCTAssertEqual(try store.take(requestId: requestId), action)
+  }
+
+  func testRuntimePrunesExpiredActionsOnMaintenanceTimer() throws {
+    let socketPath = makeSocketPath()
+    let baseDirectory = URL(fileURLWithPath: socketPath).deletingLastPathComponent()
+    let actionsDirectory = baseDirectory.appendingPathComponent("actions", isDirectory: true)
+    let store = ActionStore(directoryURL: actionsDirectory)
+    let timer = makeActionCleanupTimer(actionStore: store, interval: 0.05) { _ in }
+    defer {
+      timer.cancel()
+      try? FileManager.default.removeItem(at: baseDirectory)
+    }
+
+    let requestId = UUID().uuidString.lowercased()
+    try store.save(requestId: requestId, action: ActionPayload(executable: "/usr/bin/say", arguments: ["expire"]))
+    let fileURL = actionURL(directory: actionsDirectory, requestId: requestId)
+    try FileManager.default.setAttributes(
+      [.modificationDate: Date().addingTimeInterval(-(60 * 60 * 24 * 8))],
+      ofItemAtPath: fileURL.path
+    )
+
+    let deadline = Date().addingTimeInterval(2)
+    while FileManager.default.fileExists(atPath: fileURL.path), Date() < deadline {
+      Thread.sleep(forTimeInterval: 0.02)
+    }
+    XCTAssertFalse(FileManager.default.fileExists(atPath: fileURL.path))
   }
 
   func testStaleSocketRemovalRejectsRegularFile() throws {
@@ -323,5 +374,36 @@ final class UnixSocketTests: XCTestCase {
       .appendingPathComponent("vna-\(suffix)", isDirectory: true)
     try? FileManager.default.createDirectory(at: baseDirectory, withIntermediateDirectories: true)
     return baseDirectory.appendingPathComponent("agent.sock", isDirectory: false).path
+  }
+
+  private func actionURL(directory: URL, requestId: String) -> URL {
+    directory.appendingPathComponent("\(requestId).json", isDirectory: false)
+  }
+
+  private func startLockHolder(lockPath: String) throws -> Process {
+    let readyPipe = Pipe()
+    let child = Process()
+    child.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+    child.arguments = [
+      "-c",
+      """
+      import fcntl, os, sys, time
+      fd = os.open(sys.argv[1], os.O_CREAT | os.O_RDWR, 0o600)
+      fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+      sys.stdout.buffer.write(b"1")
+      sys.stdout.buffer.flush()
+      time.sleep(5)
+      """,
+      lockPath,
+    ]
+    child.standardOutput = readyPipe
+    child.standardError = FileHandle.nullDevice
+    try child.run()
+    guard readyPipe.fileHandleForReading.readData(ofLength: 1) == Data("1".utf8) else {
+      child.terminate()
+      child.waitUntilExit()
+      throw CocoaError(.fileReadUnknown)
+    }
+    return child
   }
 }
