@@ -105,6 +105,26 @@ final class ActionStoreTests: XCTestCase {
     XCTAssertFalse(diagnoseActionStoreWriteAccess(at: invalidDirectory))
   }
 
+  func testActionLaunchFailureIsWrittenToTheAgentLog() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = ActionStore(directoryURL: directory.appendingPathComponent("actions", isDirectory: true))
+    let logURL = directory.appendingPathComponent("agent.log", isDirectory: false)
+    let requestId = UUID().uuidString.lowercased()
+    try store.save(
+      requestId: requestId,
+      action: ActionPayload(executable: "/path/that/does/not/exist", arguments: [])
+    )
+
+    runStoredAction(actionStore: store, requestId: requestId, logger: AgentLogger(logURL: logURL))
+
+    let data = try Data(contentsOf: logURL)
+    let entry = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: String])
+    XCTAssertEqual(entry["event"], "action_failed")
+    XCTAssertEqual(entry["request_id"], requestId)
+    XCTAssertFalse(try XCTUnwrap(entry["error"]).isEmpty)
+  }
+
   private func makeTemporaryDirectory() -> URL {
     FileManager.default.temporaryDirectory
       .appendingPathComponent("vde-notifier-app-action-store-tests", isDirectory: true)
@@ -221,6 +241,16 @@ final class UnixSocketTests: XCTestCase {
 
     XCTAssertThrowsError(try readFrame(from: descriptors[1])) { error in
       guard case UnixSocketError.payloadTooLarge = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+    }
+  }
+
+  func testWriteAllFailsWhenWriteReturnsZero() throws {
+    XCTAssertThrowsError(
+      try writeAll(Data([0x01]), to: -1) { _, _, _ in 0 }
+    ) { error in
+      guard case UnixSocketError.connectionClosed = error else {
         return XCTFail("Unexpected error: \(error)")
       }
     }

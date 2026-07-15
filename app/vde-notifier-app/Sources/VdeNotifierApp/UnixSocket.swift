@@ -226,7 +226,15 @@ func writeFrame(_ data: Data, to fd: Int32) throws {
   try writeAll(data, to: fd)
 }
 
-func writeAll(_ data: Data, to fd: Int32) throws {
+typealias SocketWriteOperation = (Int32, UnsafeRawPointer, Int) -> Int
+
+func writeAll(
+  _ data: Data,
+  to fd: Int32,
+  writeOperation: SocketWriteOperation = { descriptor, buffer, count in
+    Darwin.write(descriptor, buffer, count)
+  }
+) throws {
   var offset = 0
   try data.withUnsafeBytes { rawBuffer in
     guard let baseAddress = rawBuffer.baseAddress else {
@@ -234,7 +242,7 @@ func writeAll(_ data: Data, to fd: Int32) throws {
     }
 
     while offset < rawBuffer.count {
-      let bytesWritten = Darwin.write(fd, baseAddress.advanced(by: offset), rawBuffer.count - offset)
+      let bytesWritten = writeOperation(fd, baseAddress.advanced(by: offset), rawBuffer.count - offset)
       if bytesWritten == 0 {
         throw UnixSocketError.connectionClosed
       }

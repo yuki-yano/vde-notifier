@@ -171,12 +171,68 @@ func makeActionCleanupTimer(
   return timer
 }
 
+final class AgentLogger: @unchecked Sendable {
+  private let logURL: URL
+  private let queue = DispatchQueue(label: "com.yuki-yano.vde-notifier-app.agent-log")
+
+  init(logURL: URL) {
+    self.logURL = logURL
+  }
+
+  func append(event: String, requestId: String? = nil, error: Error) {
+    var entry: [String: String] = [
+      "timestamp": ISO8601DateFormatter().string(from: Date()),
+      "event": event,
+      "error": String(describing: error),
+    ]
+    if let requestId {
+      entry["request_id"] = requestId
+    }
+    guard let data = try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys]) else {
+      return
+    }
+    queue.sync {
+      do {
+        try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: logURL.path) {
+          _ = FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        }
+        let handle = try FileHandle(forWritingTo: logURL)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: data + Data([0x0A]))
+        try handle.close()
+      } catch {
+        // Diagnostics must not terminate the notification agent.
+      }
+    }
+  }
+}
+
+func runStoredAction(actionStore: ActionStore, requestId: String, logger: AgentLogger) {
+  do {
+    guard let action = try actionStore.take(requestId: requestId) else {
+      return
+    }
+    let attributes = try FileManager.default.attributesOfItem(atPath: action.executable)
+    guard attributes[.type] as? FileAttributeType == .typeRegular,
+          FileManager.default.isExecutableFile(atPath: action.executable)
+    else {
+      throw CocoaError(.fileNoSuchFile)
+    }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: action.executable)
+    process.arguments = action.arguments
+    try process.run()
+  } catch {
+    logger.append(event: "action_failed", requestId: requestId, error: error)
+  }
+}
+
 final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate {
   private lazy var center = UNUserNotificationCenter.current()
   private let socketPath: String
   private let actionStore: ActionStore
-  private let logURL: URL
-  private let logQueue = DispatchQueue(label: "com.yuki-yano.vde-notifier-app.agent-log")
+  private let logger: AgentLogger
   private let actionCleanupInterval: TimeInterval
   private var cleanupTimer: DispatchSourceTimer?
   private var serverFD: Int32 = -1
@@ -198,7 +254,7 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   ) {
     self.socketPath = socketPath
     actionStore = ActionStore(directoryURL: actionStoreURL)
-    self.logURL = logURL
+    logger = AgentLogger(logURL: logURL)
     self.actionCleanupInterval = actionCleanupInterval
     super.init()
   }
@@ -217,8 +273,8 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
       }
       serverFD = try makeListeningUnixSocket(path: socketPath)
       cleanupTimer = makeActionCleanupTimer(actionStore: actionStore, interval: actionCleanupInterval) {
-        [weak self] error in
-        self?.appendAgentLog(event: "action_cleanup_failed", error: error)
+        [logger] error in
+        logger.append(event: "action_cleanup_failed", error: error)
       }
     } catch {
       Darwin.close(lockFD)
@@ -403,51 +459,7 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   }
 
   private func runAction(requestId: String) {
-    do {
-      guard let action = try actionStore.take(requestId: requestId) else {
-        return
-      }
-      let attributes = try FileManager.default.attributesOfItem(atPath: action.executable)
-      guard attributes[.type] as? FileAttributeType == .typeRegular,
-            FileManager.default.isExecutableFile(atPath: action.executable)
-      else {
-        throw CocoaError(.fileNoSuchFile)
-      }
-      let process = Process()
-      process.executableURL = URL(fileURLWithPath: action.executable)
-      process.arguments = action.arguments
-      try process.run()
-    } catch {
-      appendAgentLog(event: "action_failed", requestId: requestId, error: error)
-    }
-  }
-
-  private func appendAgentLog(event: String, requestId: String? = nil, error: Error) {
-    var entry: [String: String] = [
-      "timestamp": ISO8601DateFormatter().string(from: Date()),
-      "event": event,
-      "error": String(describing: error),
-    ]
-    if let requestId {
-      entry["request_id"] = requestId
-    }
-    guard let data = try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys]) else {
-      return
-    }
-    logQueue.sync {
-      do {
-        try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        if !FileManager.default.fileExists(atPath: logURL.path) {
-          _ = FileManager.default.createFile(atPath: logURL.path, contents: nil)
-        }
-        let handle = try FileHandle(forWritingTo: logURL)
-        try handle.seekToEnd()
-        try handle.write(contentsOf: data + Data([0x0A]))
-        try handle.close()
-      } catch {
-        // Logging must not terminate the notification agent.
-      }
-    }
+    runStoredAction(actionStore: actionStore, requestId: requestId, logger: logger)
   }
 
   func userNotificationCenter(
