@@ -74,4 +74,18 @@ describe.skipIf(tmuxPath === undefined)("resolveTmuxContext integration", () => 
       execFileSync(tmuxPath!, ["-S", socketPath, "has-session", "-t", context.sessionName], { stdio: "ignore" })
     ).toThrow();
   });
+
+  it("keeps the window target valid after its index changes", async () => {
+    const context = await resolveTmuxContext(tmuxPath!);
+
+    execFileSync(tmuxPath!, ["-S", socketPath, "move-window", "-s", context.windowId, "-t", `${context.sessionId}:5`]);
+
+    const currentWindowId = execFileSync(
+      tmuxPath!,
+      ["-S", socketPath, "display-message", "-p", "-t", `${context.sessionId}:5`, "#{window_id}"],
+      { encoding: "utf8" }
+    ).trim();
+    expect(currentWindowId).toBe(context.windowId);
+    expect(context.windowIndex).not.toBe(5);
+  });
 });
