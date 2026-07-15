@@ -1,5 +1,5 @@
 import Foundation
-@preconcurrency import UserNotifications
+import UserNotifications
 import VdeNotifierAppCore
 
 private struct StoredAction: Codable {
@@ -433,7 +433,8 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
 
     let sem = DispatchSemaphore(value: 0)
     let granted = LockedValue(false)
-    DispatchQueue.main.async { [center] in
+    DispatchQueue.main.async {
+      let center = UNUserNotificationCenter.current()
       center.requestAuthorization(options: [.alert, .sound]) { isGranted, _ in
         granted.set(isGranted)
         sem.signal()

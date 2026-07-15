@@ -85,9 +85,14 @@ jobs:
 
       - name: Build and verify universal app bundle
         run: |
-          app/vde-notifier-app/scripts/build-app.sh
+          EXPECTED_APP_VERSION="0.0.0-dev"
+          if [[ "${GITHUB_REF_NAME}" =~ ^app-v[0-9]+(\.[0-9]+)*$ ]]; then
+            EXPECTED_APP_VERSION="${GITHUB_REF_NAME#app-v}"
+          fi
+
+          APP_VERSION="${EXPECTED_APP_VERSION}" app/vde-notifier-app/scripts/build-app.sh
           plutil -lint build/VdeNotifierApp.app/Contents/Info.plist
           codesign --verify --deep --strict build/VdeNotifierApp.app
           xcrun lipo build/VdeNotifierApp.app/Contents/MacOS/vde-notifier-app -verify_arch arm64 x86_64
-          test "$(build/VdeNotifierApp.app/Contents/MacOS/vde-notifier-app --version)" = "0.0.0-dev"
+          test "$(build/VdeNotifierApp.app/Contents/MacOS/vde-notifier-app --version)" = "${EXPECTED_APP_VERSION}"
           build/VdeNotifierApp.app/Contents/MacOS/vde-notifier-app --help | grep -F "vde-notifier-app doctor"
