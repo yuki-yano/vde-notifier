@@ -22,6 +22,23 @@ enum ActionStoreError: Error, CustomStringConvertible {
   }
 }
 
+enum NotificationAgentError: Error, CustomStringConvertible {
+  case operationTimedOut(String)
+
+  var description: String {
+    switch self {
+    case let .operationTimedOut(operation):
+      return "Notification operation timed out: \(operation)"
+    }
+  }
+}
+
+func waitForSignal(_ semaphore: DispatchSemaphore, timeout: TimeInterval) -> Bool {
+  let boundedTimeout = min(max(timeout, 0.001), 60 * 60)
+  let nanoseconds = Int((boundedTimeout * 1_000_000_000).rounded(.up))
+  return semaphore.wait(timeout: .now() + .nanoseconds(nanoseconds)) == .success
+}
+
 final class ActionStore: @unchecked Sendable {
   private let directoryURL: URL
   private let queue = DispatchQueue(label: "com.yuki-yano.vde-notifier-app.action-store")
@@ -234,6 +251,7 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   private let actionStore: ActionStore
   private let logger: AgentLogger
   private let actionCleanupInterval: TimeInterval
+  private let notificationOperationTimeout: TimeInterval
   private var cleanupTimer: DispatchSourceTimer?
   private var serverFD: Int32 = -1
   private var lockFD: Int32 = -1
@@ -250,12 +268,14 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
     socketPath: String,
     actionStoreURL: URL,
     logURL: URL,
-    actionCleanupInterval: TimeInterval = 60 * 60
+    actionCleanupInterval: TimeInterval = 60 * 60,
+    notificationOperationTimeout: TimeInterval = 2.0
   ) {
     self.socketPath = socketPath
     actionStore = ActionStore(directoryURL: actionStoreURL)
     logger = AgentLogger(logURL: logURL)
     self.actionCleanupInterval = actionCleanupInterval
+    self.notificationOperationTimeout = notificationOperationTimeout
     super.init()
   }
 
@@ -355,8 +375,12 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   }
 
   private func handleNotifyRequest(_ request: NotifyRequest) throws -> AgentResponse {
-    guard isAuthorizedForNotifications() else {
-      return AgentResponse.failure(code: "permission_denied", message: "Notification permission is denied")
+    do {
+      guard try isAuthorizedForNotifications() else {
+        return AgentResponse.failure(code: "permission_denied", message: "Notification permission is denied")
+      }
+    } catch {
+      return AgentResponse.failure(code: "notification_timeout", message: String(describing: error))
     }
 
     if !request.action.executable.hasPrefix("/") {
@@ -382,7 +406,13 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
       enqueueError.set(error)
       sem.signal()
     }
-    sem.wait()
+    guard waitForSignal(sem, timeout: notificationOperationTimeout) else {
+      try? actionStore.remove(requestId: requestId)
+      return AgentResponse.failure(
+        code: "enqueue_timeout",
+        message: String(describing: NotificationAgentError.operationTimedOut("enqueue notification"))
+      )
+    }
 
     if let enqueueError = enqueueError.get() {
       try? actionStore.remove(requestId: requestId)
@@ -392,8 +422,8 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
     return AgentResponse.success(requestId: requestId)
   }
 
-  private func isAuthorizedForNotifications() -> Bool {
-    let status = notificationAuthorizationStatus()
+  private func isAuthorizedForNotifications() throws -> Bool {
+    let status = try notificationAuthorizationStatus()
     if status == .authorized {
       return true
     }
@@ -409,18 +439,22 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
         sem.signal()
       }
     }
-    sem.wait()
+    guard waitForSignal(sem, timeout: notificationOperationTimeout) else {
+      throw NotificationAgentError.operationTimedOut("request authorization")
+    }
     return granted.get()
   }
 
-  func notificationAuthorizationStatus() -> UNAuthorizationStatus {
+  func notificationAuthorizationStatus() throws -> UNAuthorizationStatus {
     let sem = DispatchSemaphore(value: 0)
     let status = LockedValue<UNAuthorizationStatus>(.notDetermined)
     center.getNotificationSettings { settings in
       status.set(settings.authorizationStatus)
       sem.signal()
     }
-    sem.wait()
+    guard waitForSignal(sem, timeout: notificationOperationTimeout) else {
+      throw NotificationAgentError.operationTimedOut("load notification settings")
+    }
     return status.get()
   }
 

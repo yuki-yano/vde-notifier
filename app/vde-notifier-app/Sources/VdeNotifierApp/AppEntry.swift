@@ -132,11 +132,12 @@ struct VdeNotifierAppMain {
       authorization.set(settings.authorizationStatus)
       sem.signal()
     }
-    sem.wait()
+    let authorizationCheckSucceeded = waitForSignal(sem, timeout: 2.0)
 
     let report: [String: Any] = [
       "running": AgentBootstrap.isRunning(socketPath: AppPaths.socketURL().path),
-      "authorization": authorizationLabel(authorization.get()),
+      "authorization": authorizationCheckSucceeded ? authorizationLabel(authorization.get()) : "unknown",
+      "authorization_check": authorizationCheckSucceeded ? "ok" : "timeout",
       "actions_writable": diagnoseActionStoreWriteAccess(at: AppPaths.actionsDirectoryURL()),
       "socket_path": AppPaths.socketURL().path,
       "actions_path": AppPaths.actionsDirectoryURL().path

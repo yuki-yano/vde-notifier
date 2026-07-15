@@ -137,6 +137,19 @@ final class ActionStoreTests: XCTestCase {
 }
 
 final class UnixSocketTests: XCTestCase {
+  func testSemaphoreDeadlineReportsSuccessAndTimeout() {
+    let signaled = DispatchSemaphore(value: 0)
+    DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(10)) {
+      signaled.signal()
+    }
+    XCTAssertTrue(waitForSignal(signaled, timeout: 0.5))
+
+    let stalled = DispatchSemaphore(value: 0)
+    let startedAt = Date()
+    XCTAssertFalse(waitForSignal(stalled, timeout: 0.02))
+    XCTAssertLessThan(Date().timeIntervalSince(startedAt), 0.5)
+  }
+
   func testListeningSocketIsReachable() throws {
     let socketPath = makeSocketPath()
     let serverFD = try makeListeningUnixSocket(path: socketPath)
