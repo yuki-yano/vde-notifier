@@ -47,14 +47,19 @@ jobs:
       - name: Checkout release tag commit
         run: git checkout --detach "${{ steps.release_tag.outputs.value }}"
 
-      - name: Run Swift tests
-        run: env -u LIBRARY_PATH swift test --package-path app/vde-notifier-app
+      - name: Run strict Swift tests
+        run: env -u LIBRARY_PATH swift test --package-path app/vde-notifier-app -Xswiftc -strict-concurrency=complete -Xswiftc -warnings-as-errors
 
       - name: Build app release asset
         run: |
           TAG="${{ steps.release_tag.outputs.value }}"
           APP_VERSION="${TAG#app-v}" \
             app/vde-notifier-app/scripts/create-release-asset.sh
+
+      - name: Verify release asset
+        run: |
+          tar -tzf VdeNotifierApp.app.tar.gz | grep -F "VdeNotifierApp.app/Contents/MacOS/vde-notifier-app"
+          tar -tzf VdeNotifierApp.app.tar.gz | grep -F "VdeNotifierApp.app/Contents/Info.plist"
 
       - name: Upload GitHub release asset
         uses: softprops/action-gh-release@v2

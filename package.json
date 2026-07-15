@@ -10,6 +10,7 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "swift:test": "env -u LIBRARY_PATH swift test --package-path app/vde-notifier-app",
+    "swift:test:strict": "env -u LIBRARY_PATH swift test --package-path app/vde-notifier-app -Xswiftc -strict-concurrency=complete -Xswiftc -warnings-as-errors",
     "swift:build": "env -u LIBRARY_PATH swift build --package-path app/vde-notifier-app --product vde-notifier-app",
     "swift:app": "app/vde-notifier-app/scripts/build-app.sh",
     "swift:release-asset": "app/vde-notifier-app/scripts/create-release-asset.sh",
@@ -20,7 +21,7 @@
     "typecheck": "tsc --noEmit",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "ci": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run pack:check",
+    "ci": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run test:coverage && pnpm run pack:check",
     "prepack": "pnpm run build",
     "prepublishOnly": "pnpm run ci"
   },

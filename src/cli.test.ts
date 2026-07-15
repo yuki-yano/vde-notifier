@@ -683,9 +683,9 @@ describe("control options", () => {
     expect(version).toMatch(/^\d+\.\d+\.\d+/);
   });
 
-  it("resolves the package version when npm does not provide one", () => {
+  it("resolves the package version independently of npm environment variables", () => {
     const originalVersion = process.env.npm_package_version;
-    delete process.env.npm_package_version;
+    process.env.npm_package_version = "9.9.9";
     try {
       expect(__internal.resolveCliVersion()).toBe("0.1.10");
     } finally {

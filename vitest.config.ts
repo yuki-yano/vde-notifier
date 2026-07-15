@@ -15,7 +15,13 @@ export default defineConfig({
     globals: true,
     coverage: {
       reporter: ["text", "lcov"],
-      enabled: false
+      enabled: false,
+      thresholds: {
+        branches: 70,
+        functions: 90,
+        lines: 75,
+        statements: 75
+      }
     }
   }
 });

@@ -35,13 +35,56 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install tmux for integration tests
+        run: sudo apt-get update && sudo apt-get install --yes tmux
+
       - name: Run CI
         run: pnpm run ci
+
+  bun:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js for pnpm
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.17.0
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Use pnpm
+        run: corepack prepare pnpm@10.28.2 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Install tmux for integration tests
+        run: sudo apt-get update && sudo apt-get install --yes tmux
+
+      - name: Test with Bun
+        run: |
+          bun run build
+          bun run test
+          test "$(bun dist/cli.js --version)" = "$(bun -p "require('./package.json').version")"
 
   swift:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
 
-      - name: Run Swift tests
-        run: env -u LIBRARY_PATH swift test --package-path app/vde-notifier-app
+      - name: Run strict Swift tests
+        run: env -u LIBRARY_PATH swift test --package-path app/vde-notifier-app -Xswiftc -strict-concurrency=complete -Xswiftc -warnings-as-errors
+
+      - name: Build and verify universal app bundle
+        run: |
+          app/vde-notifier-app/scripts/build-app.sh
+          plutil -lint build/VdeNotifierApp.app/Contents/Info.plist
+          codesign --verify --deep --strict build/VdeNotifierApp.app
+          xcrun lipo build/VdeNotifierApp.app/Contents/MacOS/vde-notifier-app -verify_arch arm64 x86_64

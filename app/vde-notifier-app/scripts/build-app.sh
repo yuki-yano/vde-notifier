@@ -20,17 +20,33 @@ fi
 APP_VERSION="${APP_VERSION:-0.0.0-dev}"
 APP_BUILD_VERSION="${APP_BUILD_VERSION:-${GITHUB_RUN_NUMBER:-1}}"
 
-env -u LIBRARY_PATH swift build --package-path "${PROJECT_DIR}" --configuration "${CONFIGURATION}" --product vde-notifier-app
+TARGET_TRIPLES=(
+  "arm64-apple-macosx14.0"
+  "x86_64-apple-macosx14.0"
+)
+BINARY_PATHS=()
 
-BINARY_PATH="${PROJECT_DIR}/.build/arm64-apple-macosx/${CONFIGURATION}/vde-notifier-app"
-if [[ ! -x "${BINARY_PATH}" ]]; then
-  BINARY_PATH="${PROJECT_DIR}/.build/${CONFIGURATION}/vde-notifier-app"
-fi
+for triple in "${TARGET_TRIPLES[@]}"; do
+  env -u LIBRARY_PATH swift build \
+    --package-path "${PROJECT_DIR}" \
+    --configuration "${CONFIGURATION}" \
+    --product vde-notifier-app \
+    --triple "${triple}"
 
-if [[ ! -x "${BINARY_PATH}" ]]; then
-  echo "build output not found: ${BINARY_PATH}" >&2
-  exit 1
-fi
+  target_directory="${triple%14.0}"
+  binary_path="${PROJECT_DIR}/.build/${target_directory}/${CONFIGURATION}/vde-notifier-app"
+  if [[ ! -x "${binary_path}" ]]; then
+    echo "build output not found: ${binary_path}" >&2
+    exit 1
+  fi
+  BINARY_PATHS+=("${binary_path}")
+done
+
+UNIVERSAL_DIR="${PROJECT_DIR}/.build/universal/${CONFIGURATION}"
+UNIVERSAL_BINARY="${UNIVERSAL_DIR}/vde-notifier-app"
+mkdir -p "${UNIVERSAL_DIR}"
+xcrun lipo -create "${BINARY_PATHS[@]}" -output "${UNIVERSAL_BINARY}"
+xcrun lipo "${UNIVERSAL_BINARY}" -verify_arch arm64 x86_64
 
 APP_DIR="${BUILD_DIR}/VdeNotifierApp.app"
 CONTENTS_DIR="${APP_DIR}/Contents"
@@ -40,7 +56,7 @@ RESOURCES_DIR="${CONTENTS_DIR}/Resources"
 rm -rf "${APP_DIR}"
 mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
-cp "${BINARY_PATH}" "${MACOS_DIR}/vde-notifier-app"
+cp "${UNIVERSAL_BINARY}" "${MACOS_DIR}/vde-notifier-app"
 chmod +x "${MACOS_DIR}/vde-notifier-app"
 
 # Copy app icon
@@ -84,5 +100,9 @@ PLIST
 
 codesign --force --sign - --timestamp=none --identifier "${BUNDLE_IDENTIFIER}" "${MACOS_DIR}/vde-notifier-app"
 codesign --force --deep --sign - --timestamp=none --identifier "${BUNDLE_IDENTIFIER}" "${APP_DIR}"
+
+plutil -lint "${CONTENTS_DIR}/Info.plist"
+codesign --verify --deep --strict "${APP_DIR}"
+xcrun lipo "${MACOS_DIR}/vde-notifier-app" -verify_arch arm64 x86_64
 
 echo "Built app bundle: ${APP_DIR}"

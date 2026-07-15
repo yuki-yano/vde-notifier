@@ -1,9 +1,8 @@
-import { readFileSync } from "node:fs";
-import { basename, dirname, resolve } from "node:path";
+import { basename } from "node:path";
 import { argv, env as processEnv } from "node:process";
-import { fileURLToPath } from "node:url";
 import { parseArgs, type ArgsDef } from "citty";
 import { z } from "zod";
+import packageJson from "../../package.json" with { type: "json" };
 import type { CliOptions, NotifierKind } from "../types";
 import { asNonEmptyString } from "../agents/context";
 
@@ -59,24 +58,7 @@ export const formatUsage = (programName = "vde-notifier"): string =>
   ].join("\n");
 
 export const resolveCliVersion = (): string => {
-  const envVersion = asNonEmptyString(processEnv.npm_package_version);
-  if (typeof envVersion === "string") {
-    return envVersion;
-  }
-
-  try {
-    const modulePath = fileURLToPath(import.meta.url);
-    const packageJsonPath = resolve(dirname(modulePath), "..", "..", "package.json");
-    const packageJson = JSON.parse(readFileSync(packageJsonPath, { encoding: "utf8" })) as { version?: unknown };
-    const version = asNonEmptyString(packageJson.version);
-    if (typeof version === "string") {
-      return version;
-    }
-  } catch {
-    // fall through
-  }
-
-  return "0.0.0";
+  return packageJson.version;
 };
 
 export const resolveProgramName = (): string => {

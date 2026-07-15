@@ -1,5 +1,5 @@
 import Foundation
-import UserNotifications
+@preconcurrency import UserNotifications
 import VdeNotifierAppCore
 
 private struct StoredAction: Codable {
@@ -22,7 +22,7 @@ enum ActionStoreError: Error, CustomStringConvertible {
   }
 }
 
-final class ActionStore {
+final class ActionStore: @unchecked Sendable {
   private let directoryURL: URL
   private let queue = DispatchQueue(label: "com.yuki-yano.vde-notifier-app.action-store")
   private let encoder = JSONEncoder()
