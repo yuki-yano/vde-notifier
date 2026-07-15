@@ -159,7 +159,8 @@ private func consumeValue(arguments: [String], index: inout Int, option: String)
     throw CommandParseError.missingValue(flag: option)
   }
   let value = arguments[next]
-  if value.hasPrefix("--") {
+  let knownOptions = Set(["--title", "--message", "--sound", "--action-exec", "--action-arg", "--help"])
+  if knownOptions.contains(value) {
     throw CommandParseError.missingValue(flag: option)
   }
   index = next

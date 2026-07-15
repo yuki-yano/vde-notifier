@@ -55,21 +55,18 @@ describe("runtime utilities", () => {
   });
 
   describe("verifyRequiredBinaries", () => {
-    it("ensures tmux, vde-notifier-app, and osascript binaries by default", async () => {
+    it("ensures tmux and vde-notifier-app binaries by default", async () => {
       mockEnsureBinary.mockResolvedValueOnce("/usr/bin/tmux");
       mockEnsureBinary.mockResolvedValueOnce("/opt/homebrew/bin/vde-notifier-app");
-      mockEnsureBinary.mockResolvedValueOnce("/usr/bin/osascript");
 
       const report = await runtime.verifyRequiredBinaries();
 
-      expect(mockEnsureBinary).toHaveBeenCalledTimes(3);
+      expect(mockEnsureBinary).toHaveBeenCalledTimes(2);
       expect(mockEnsureBinary).toHaveBeenNthCalledWith(1, "tmux");
       expect(mockEnsureBinary).toHaveBeenNthCalledWith(2, "vde-notifier-app");
-      expect(mockEnsureBinary).toHaveBeenNthCalledWith(3, "osascript");
       expect(report.binaries.tmux).toBe("/usr/bin/tmux");
       expect(report.binaries.notifier).toBe("/opt/homebrew/bin/vde-notifier-app");
       expect(report.binaries.notifierKind).toBe("vde-notifier-app");
-      expect(report.binaries.osascript).toBe("/usr/bin/osascript");
     });
 
     it("prints installation guidance when default notifier is missing", async () => {
@@ -92,11 +89,10 @@ describe("runtime utilities", () => {
     it("supports selecting swiftDialog as notifier", async () => {
       mockEnsureBinary.mockResolvedValueOnce("/usr/bin/tmux");
       mockEnsureBinary.mockResolvedValueOnce("/usr/local/bin/dialog");
-      mockEnsureBinary.mockResolvedValueOnce("/usr/bin/osascript");
 
       const report = await runtime.verifyRequiredBinaries("swiftdialog");
 
-      expect(mockEnsureBinary).toHaveBeenCalledTimes(3);
+      expect(mockEnsureBinary).toHaveBeenCalledTimes(2);
       expect(mockEnsureBinary).toHaveBeenNthCalledWith(2, "dialog");
       expect(report.binaries.notifier).toBe("/usr/local/bin/dialog");
       expect(report.binaries.notifierKind).toBe("swiftdialog");
@@ -105,14 +101,25 @@ describe("runtime utilities", () => {
     it("supports selecting vde-notifier-app as notifier", async () => {
       mockEnsureBinary.mockResolvedValueOnce("/usr/bin/tmux");
       mockEnsureBinary.mockResolvedValueOnce("/opt/homebrew/bin/vde-notifier-app");
-      mockEnsureBinary.mockResolvedValueOnce("/usr/bin/osascript");
 
       const report = await runtime.verifyRequiredBinaries("vde-notifier-app");
 
-      expect(mockEnsureBinary).toHaveBeenCalledTimes(3);
+      expect(mockEnsureBinary).toHaveBeenCalledTimes(2);
       expect(mockEnsureBinary).toHaveBeenNthCalledWith(2, "vde-notifier-app");
       expect(report.binaries.notifier).toBe("/opt/homebrew/bin/vde-notifier-app");
       expect(report.binaries.notifierKind).toBe("vde-notifier-app");
+    });
+  });
+
+  describe("verifyTmuxBinary", () => {
+    it("only ensures tmux for dry-run execution", async () => {
+      mockEnsureBinary.mockResolvedValueOnce("/usr/bin/tmux");
+
+      const report = await runtime.verifyTmuxBinary();
+
+      expect(mockEnsureBinary).toHaveBeenCalledTimes(1);
+      expect(mockEnsureBinary).toHaveBeenCalledWith("tmux");
+      expect(report.binaries.tmux).toBe("/usr/bin/tmux");
     });
   });
 
@@ -127,8 +134,7 @@ describe("runtime utilities", () => {
         binaries: {
           tmux: "/tmp/tmux",
           notifier: "/tmp/tn",
-          notifierKind: "terminal-notifier",
-          osascript: "/usr/bin/osascript"
+          notifierKind: "terminal-notifier"
         }
       };
 

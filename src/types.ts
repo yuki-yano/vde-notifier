@@ -30,12 +30,20 @@ export type BinaryReport = {
   readonly tmux: string;
   readonly notifier: string;
   readonly notifierKind: NotifierKind;
-  readonly osascript: string;
+};
+
+export type TmuxBinaryReport = {
+  readonly tmux: string;
 };
 
 export type EnvironmentReport = {
   readonly runtime: RuntimeInfo;
   readonly binaries: BinaryReport;
+};
+
+export type TmuxEnvironmentReport = {
+  readonly runtime: RuntimeInfo;
+  readonly binaries: TmuxBinaryReport;
 };
 
 export type TmuxContext = {

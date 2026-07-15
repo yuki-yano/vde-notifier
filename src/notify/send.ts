@@ -7,12 +7,14 @@ const SWIFT_DIALOG_BUTTON_TEXT = "Return to pane";
 const SWIFT_DIALOG_SOUND_PLAYER = "afplay";
 const SYSTEM_SOUND_DIRECTORY = "/System/Library/Sounds";
 const SOUND_RESOURCE_EXTENSION = ".aiff";
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 const normalizeMessage = (value: string): string => (value.startsWith("-") ? ` ${value}` : value);
 
 const truncateMessage = (value: string): string => {
   const normalized = normalizeMessage(value);
-  return normalized.length > MAX_MESSAGE_LENGTH ? normalized.slice(0, MAX_MESSAGE_LENGTH) : normalized;
+  const graphemes = Array.from(graphemeSegmenter.segment(normalized), ({ segment }) => segment);
+  return graphemes.length > MAX_MESSAGE_LENGTH ? graphemes.slice(0, MAX_MESSAGE_LENGTH).join("") : normalized;
 };
 
 const resolveSoundRequest = (sound?: string): string | undefined => {

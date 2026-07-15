@@ -62,6 +62,16 @@ describe("sendNotification", () => {
     expect(args[3]).toBe(longMessage.slice(0, __internal.MAX_MESSAGE_LENGTH));
   });
 
+  it("does not split an emoji grapheme when truncating", () => {
+    const familyEmoji = "👨‍👩‍👧‍👦";
+    const message = `${"x".repeat(__internal.MAX_MESSAGE_LENGTH - 1)}${familyEmoji}trailing`;
+
+    const truncated = __internal.truncateMessage(message);
+
+    expect(truncated).toBe(`${"x".repeat(__internal.MAX_MESSAGE_LENGTH - 1)}${familyEmoji}`);
+    expect(truncated.endsWith(familyEmoji)).toBe(true);
+  });
+
   it("omits sound flag when None is requested", async () => {
     await sendNotification({
       notifierKind: "terminal-notifier",

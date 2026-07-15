@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import type { CliOptions, EnvironmentReport, FocusCommand, FocusPayload, TerminalProfile, TmuxContext } from "./types";
-import { __internal } from "./cli";
+import { __internal, main } from "./cli";
 
 vi.mock("execa", () => ({
   execa: vi.fn()
@@ -31,6 +31,13 @@ vi.mock("./tmux/control", () => ({
   focusPane: vi.fn()
 }));
 
+vi.mock("./utils/runtime", () => ({
+  assertRuntimeSupport: vi.fn(),
+  logBinaryReport: vi.fn(),
+  verifyRequiredBinaries: vi.fn(),
+  verifyTmuxBinary: vi.fn()
+}));
+
 const resolveTmuxContextMock = vi.mocked(await import("./tmux/query")).resolveTmuxContext;
 const resolveTerminalProfileMock = vi.mocked(await import("./terminal/profile")).resolveTerminalProfile;
 const activateTerminalMock = vi.mocked(await import("./terminal/profile")).activateTerminal;
@@ -39,6 +46,9 @@ const buildFocusCommandMock = vi.mocked(await import("./utils/payload")).buildFo
 const parseFocusPayloadMock = vi.mocked(await import("./utils/payload")).parseFocusPayload;
 const focusPaneMock = vi.mocked(await import("./tmux/control")).focusPane;
 const execaMock = vi.mocked(await import("execa")).execa;
+const runtimeMocks = await import("./utils/runtime");
+const verifyRequiredBinariesMock = vi.mocked(runtimeMocks.verifyRequiredBinaries);
+const verifyTmuxBinaryMock = vi.mocked(runtimeMocks.verifyTmuxBinary);
 
 const sampleTmux: TmuxContext = {
   tmuxBin: "/opt/homebrew/bin/tmux",
@@ -79,8 +89,7 @@ const environmentReport: EnvironmentReport = {
   binaries: {
     tmux: sampleTmux.tmuxBin,
     notifier: "/opt/homebrew/bin/terminal-notifier",
-    notifierKind: "terminal-notifier",
-    osascript: "/usr/bin/osascript"
+    notifierKind: "terminal-notifier"
   }
 };
 
@@ -106,6 +115,11 @@ beforeEach(() => {
   buildFocusCommandMock.mockReturnValue(focusCommand);
   parseFocusPayloadMock.mockReturnValue(samplePayload);
   execaMock.mockResolvedValue({} as Awaited<ReturnType<typeof execaMock>>);
+  verifyRequiredBinariesMock.mockResolvedValue(environmentReport);
+  verifyTmuxBinaryMock.mockResolvedValue({
+    runtime: environmentReport.runtime,
+    binaries: { tmux: sampleTmux.tmuxBin }
+  });
   delete process.env.VDE_NOTIFIER_TERMINAL;
   delete process.env.CODEX_NOTIFICATION_PAYLOAD;
   delete process.env.CODEX_NOTIFICATION_SOUND;
@@ -197,11 +211,17 @@ describe("runNotify", () => {
       notifier: "terminal-notifier"
     } as CliOptions;
 
-    const result = await __internal.runNotify(options, environmentReport, ["--codex", payload], "");
+    const result = await __internal.runNotify(
+      options,
+      environmentReport,
+      ["--codex", payload, "--", "other-command"],
+      ""
+    );
 
     expect(result).toBe(0);
     expect(sendNotificationMock).not.toHaveBeenCalled();
     expect(resolveTmuxContextMock).not.toHaveBeenCalled();
+    expect(execaMock).toHaveBeenCalledWith("other-command", [payload], { stdio: "inherit" });
   });
 
   it("skips notification for codex subagent when configured", async () => {
@@ -529,6 +549,17 @@ describe("parseArguments", () => {
     expect(options.message).toBe("-h");
   });
 
+  it("treats an unknown long option token as a title value", () => {
+    const options = __internal.parseArguments(["--title", "--deployment-finished"]);
+    expect(options.title).toBe("--deployment-finished");
+  });
+
+  it("still rejects a known option where a value is required", () => {
+    expect(() => __internal.parseArguments(["--title", "--message", "done"])).toThrow(
+      "Failed to parse CLI options:\nOption --title requires a value."
+    );
+  });
+
   it("enables Claude mode flag", () => {
     const options = __internal.parseArguments(["--claude"]);
     expect(options.claude).toBe(true);
@@ -584,6 +615,42 @@ describe("parseArguments", () => {
     expect(() => __internal.parseArguments(["--verbose=true"])).toThrow(
       "Failed to parse CLI options:\nOption --verbose does not take a value."
     );
+  });
+});
+
+describe("main", () => {
+  const withArgv = async (args: readonly string[], callback: () => Promise<void>): Promise<void> => {
+    const originalArgv = [...process.argv];
+    process.argv.splice(0, process.argv.length, originalArgv[0] ?? "node", originalArgv[1] ?? "cli.ts", ...args);
+    try {
+      await callback();
+    } finally {
+      process.argv.splice(0, process.argv.length, ...originalArgv);
+    }
+  };
+
+  it("does not verify binaries when a Codex notification is skipped", async () => {
+    const payload = JSON.stringify({
+      type: "agent-turn-complete",
+      "last-assistant-message": '{"title":"Generated title"}'
+    });
+
+    await withArgv(["--codex", payload], async () => {
+      expect(await main()).toBe(0);
+    });
+
+    expect(verifyRequiredBinariesMock).not.toHaveBeenCalled();
+    expect(verifyTmuxBinaryMock).not.toHaveBeenCalled();
+  });
+
+  it("only verifies tmux during dry-run", async () => {
+    await withArgv(["--dry-run"], async () => {
+      expect(await main()).toBe(0);
+    });
+
+    expect(verifyTmuxBinaryMock).toHaveBeenCalledTimes(1);
+    expect(verifyRequiredBinariesMock).not.toHaveBeenCalled();
+    expect(sendNotificationMock).not.toHaveBeenCalled();
   });
 });
 

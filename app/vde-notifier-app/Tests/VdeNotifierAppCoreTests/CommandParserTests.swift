@@ -48,6 +48,32 @@ final class CommandParserTests: XCTestCase {
     }
   }
 
+  func testParseNotifyAcceptsValuesStartingWithDoubleHyphen() throws {
+    let command = try parseCommandLine([
+      "notify",
+      "--title",
+      "--deployment-finished",
+      "--message",
+      "--all-tasks-complete",
+      "--action-exec",
+      "/usr/bin/true",
+    ])
+
+    guard case let .notify(notify) = command else {
+      XCTFail("Expected notify command")
+      return
+    }
+
+    XCTAssertEqual(notify.title, "--deployment-finished")
+    XCTAssertEqual(notify.message, "--all-tasks-complete")
+  }
+
+  func testParseNotifyRejectsKnownOptionAsMissingValue() throws {
+    XCTAssertThrowsError(try parseCommandLine(["notify", "--title", "--message", "done"])) { error in
+      XCTAssertEqual(error as? CommandParseError, .missingValue(flag: "--title"))
+    }
+  }
+
   func testParseDefaultHelp() throws {
     let command = try parseCommandLine([])
     XCTAssertEqual(command, .help)

@@ -25,9 +25,10 @@ import type {
   NotifierKind,
   NotificationContent,
   TerminalProfile,
-  TmuxContext
+  TmuxContext,
+  TmuxEnvironmentReport
 } from "./types";
-import { assertRuntimeSupport, logBinaryReport, verifyRequiredBinaries } from "./utils/runtime";
+import { assertRuntimeSupport, logBinaryReport, verifyRequiredBinaries, verifyTmuxBinary } from "./utils/runtime";
 import { resolveTmuxContext } from "./tmux/query";
 import { resolveTerminalProfile, activateTerminal } from "./terminal/profile";
 import { sendNotification } from "./notify/send";
@@ -555,7 +556,12 @@ const parseRawArgs = (rawArgs: readonly string[]): ParsedRawArgs => {
           continue;
         }
         const next = rawArgs[index + 1];
-        if (typeof next !== "string" || next.startsWith("--")) {
+        const nextLongOption = typeof next === "string" ? `--${next.slice(2).split("=", 1)[0]}` : undefined;
+        if (
+          typeof next !== "string" ||
+          next === "--" ||
+          (next.startsWith("--") && nextLongOption !== undefined && knownLongOptions.has(nextLongOption))
+        ) {
           failCliOptionParse(`Option ${flagLabel} requires a value.`);
         }
         normalizedArgs.push(`${flagLabel}=${next}`);
@@ -1292,9 +1298,54 @@ const logVerbose = (enabled: boolean, logFile: string | undefined, detail: unkno
   appendDiagnosticLog(logFile, detail);
 };
 
+const isNotificationEnvironmentReport = (report: TmuxEnvironmentReport): report is EnvironmentReport => {
+  const binaries = report.binaries as Partial<EnvironmentReport["binaries"]>;
+  return (
+    typeof binaries.notifier === "string" &&
+    (binaries.notifierKind === "terminal-notifier" ||
+      binaries.notifierKind === "swiftdialog" ||
+      binaries.notifierKind === "vde-notifier-app")
+  );
+};
+
+const resolveNotifySkipReason = (options: CliOptions, agentContext: CodexContext | undefined): string | undefined => {
+  if (options.codex && agentContext?.isTitleGeneration === true) {
+    return "codex-title-generation";
+  }
+  if (options.codex && options.skipCodexSubagent && agentContext?.isSubagent === true) {
+    return "codex-subagent";
+  }
+  if (options.codex && options.skipCodexNonInteractive && agentContext?.isNonInteractive === true) {
+    return "codex-non-interactive";
+  }
+  if (options.claude && options.skipClaudeNonInteractive && agentContext?.isNonInteractive === true) {
+    return "claude-non-interactive";
+  }
+  return undefined;
+};
+
+const runForwardCommand = async (
+  options: CliOptions,
+  rawArgs: readonly string[],
+  agentContext: CodexContext | undefined
+): Promise<void> => {
+  const forward = resolveForwardCommand(rawArgs);
+  if (forward === undefined) {
+    return;
+  }
+
+  const forwardArgs = resolveForwardArgs(options, forward, agentContext);
+  logVerbose(options.verbose, options.logFile, {
+    stage: "forward",
+    executable: forward.executable,
+    args: forwardArgs
+  });
+  await execa(forward.executable, [...(forwardArgs ?? [])], { stdio: "inherit" });
+};
+
 const runNotify = async (
   options: CliOptions,
-  report: EnvironmentReport,
+  report?: EnvironmentReport,
   rawArgs: readonly string[] = [],
   stdinOverride?: string
 ): Promise<number> => {
@@ -1304,47 +1355,23 @@ const runNotify = async (
       ? await loadCodexContext(rawArgs, stdinOverride)
       : undefined;
 
-  if (options.codex && agentContext?.isTitleGeneration === true) {
+  const skipReason = resolveNotifySkipReason(options, agentContext);
+  if (skipReason !== undefined) {
     logVerbose(options.verbose, options.logFile, {
       stage: "notify",
       skipped: true,
-      reason: "codex-title-generation",
+      reason: skipReason,
       context: agentContext
     });
+    await runForwardCommand(options, rawArgs, agentContext);
     return 0;
   }
 
-  if (options.codex && options.skipCodexSubagent && agentContext?.isSubagent === true) {
-    logVerbose(options.verbose, options.logFile, {
-      stage: "notify",
-      skipped: true,
-      reason: "codex-subagent",
-      context: agentContext
-    });
-    return 0;
-  }
+  const resolvedReport: TmuxEnvironmentReport =
+    report ?? (options.dryRun ? await verifyTmuxBinary() : await verifyRequiredBinaries(options.notifier));
+  logBinaryReport(resolvedReport, options.verbose);
 
-  if (options.codex && options.skipCodexNonInteractive && agentContext?.isNonInteractive === true) {
-    logVerbose(options.verbose, options.logFile, {
-      stage: "notify",
-      skipped: true,
-      reason: "codex-non-interactive",
-      context: agentContext
-    });
-    return 0;
-  }
-
-  if (options.claude && options.skipClaudeNonInteractive && agentContext?.isNonInteractive === true) {
-    logVerbose(options.verbose, options.logFile, {
-      stage: "notify",
-      skipped: true,
-      reason: "claude-non-interactive",
-      context: agentContext
-    });
-    return 0;
-  }
-
-  const tmux = await resolveTmuxContext(report.binaries.tmux);
+  const tmux = await resolveTmuxContext(resolvedReport.binaries.tmux);
   const envOverride =
     typeof processEnv.VDE_NOTIFIER_TERMINAL === "string" ? processEnv.VDE_NOTIFIER_TERMINAL : undefined;
   const terminal = resolveTerminalProfile({
@@ -1374,8 +1401,6 @@ const runNotify = async (
   }
 
   const soundName = notification.sound;
-  const forward = resolveForwardCommand(rawArgs);
-  const forwardArgs = resolveForwardArgs(options, forward, agentContext);
 
   logVerbose(options.verbose, options.logFile, {
     stage: "notify",
@@ -1387,23 +1412,20 @@ const runNotify = async (
     context: agentContext
   });
 
+  if (!isNotificationEnvironmentReport(resolvedReport)) {
+    throw new Error("Notifier binary verification was not performed.");
+  }
+
   await sendNotification({
-    notifierKind: report.binaries.notifierKind,
-    notifierPath: report.binaries.notifier,
+    notifierKind: resolvedReport.binaries.notifierKind,
+    notifierPath: resolvedReport.binaries.notifier,
     title: notification.title,
     message: notification.message,
     focusCommand,
     sound: soundName
   });
 
-  if (forward !== undefined) {
-    logVerbose(options.verbose, options.logFile, {
-      stage: "forward",
-      executable: forward.executable,
-      args: forwardArgs
-    });
-    await execa(forward.executable, [...(forwardArgs ?? [])], { stdio: "inherit" });
-  }
+  await runForwardCommand(options, rawArgs, agentContext);
 
   return 0;
 };
@@ -1438,9 +1460,7 @@ export const main = async (): Promise<number> => {
     const options = parseArguments(rawArgs);
     assertRuntimeSupport();
     if (options.mode === "notify") {
-      const report = await verifyRequiredBinaries(options.notifier);
-      logBinaryReport(report, options.verbose);
-      return await runNotify(options, report, rawArgs);
+      return await runNotify(options, undefined, rawArgs);
     }
     return await runFocus(options);
   } catch (error) {

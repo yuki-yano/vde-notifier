@@ -1,5 +1,5 @@
 import { yellow } from "kleur/colors";
-import type { EnvironmentReport, NotifierKind, RuntimeInfo } from "../types";
+import type { EnvironmentReport, NotifierKind, RuntimeInfo, TmuxEnvironmentReport } from "../types";
 import { ensureBinary } from "./binary";
 
 const detectRuntime = (): RuntimeInfo => ({
@@ -69,22 +69,26 @@ export const verifyRequiredBinaries = async (notifier: NotifierKind = DEFAULT_NO
     }
     throw error;
   }
-  const osascriptPath = await ensureBinary("osascript");
-
   const report: EnvironmentReport = {
     runtime: detectRuntime(),
     binaries: {
       tmux: tmuxPath,
       notifier: notifierPath,
-      notifierKind: notifier,
-      osascript: osascriptPath
+      notifierKind: notifier
     }
   };
 
   return report;
 };
 
-export const logBinaryReport = (report: EnvironmentReport, verbose: boolean): void => {
+export const verifyTmuxBinary = async (): Promise<TmuxEnvironmentReport> => ({
+  runtime: detectRuntime(),
+  binaries: {
+    tmux: await ensureBinary("tmux")
+  }
+});
+
+export const logBinaryReport = (report: TmuxEnvironmentReport, verbose: boolean): void => {
   if (verbose !== true) {
     return;
   }
