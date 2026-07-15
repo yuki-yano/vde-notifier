@@ -84,7 +84,7 @@ public func decodeAgentRequest(_ data: Data) throws -> AgentRequest {
       }
       return .ping(request)
     default:
-      throw WireCodecError.invalidJSON("Unsupported request type: \(header.type)")
+      throw WireCodecError.invalidRequest("Unsupported request type: \(header.type)")
     }
   } catch let error as WireCodecError {
     throw error

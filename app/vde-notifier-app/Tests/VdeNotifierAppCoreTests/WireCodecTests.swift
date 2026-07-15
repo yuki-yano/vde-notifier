@@ -83,4 +83,75 @@ final class WireCodecTests: XCTestCase {
       }
     }
   }
+
+  func testDecodeRejectsUnsupportedRequestType() throws {
+    let request = NotifyRequest(
+      type: "unknown",
+      requestId: UUID().uuidString.lowercased(),
+      title: "Build",
+      message: "Done",
+      sound: nil,
+      action: ActionPayload(executable: "/usr/bin/say", arguments: [])
+    )
+
+    XCTAssertThrowsError(try decodeAgentRequest(try encodeNotifyRequest(request))) { error in
+      guard case WireCodecError.invalidRequest = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+    }
+  }
+
+  func testDecodeRejectsOversizedTitle() throws {
+    let request = makeNotifyRequest(title: String(repeating: "t", count: 1025))
+
+    XCTAssertThrowsError(try decodeAgentRequest(try encodeNotifyRequest(request))) { error in
+      guard case WireCodecError.invalidRequest = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+    }
+  }
+
+  func testDecodeRejectsOversizedMessage() throws {
+    let request = makeNotifyRequest(message: String(repeating: "m", count: (64 * 1024) + 1))
+
+    XCTAssertThrowsError(try decodeAgentRequest(try encodeNotifyRequest(request))) { error in
+      guard case WireCodecError.invalidRequest = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+    }
+  }
+
+  func testDecodeRejectsTooManyActionArguments() throws {
+    let request = makeNotifyRequest(arguments: Array(repeating: "arg", count: 513))
+
+    XCTAssertThrowsError(try decodeAgentRequest(try encodeNotifyRequest(request))) { error in
+      guard case WireCodecError.invalidRequest = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+    }
+  }
+
+  func testDecodeRejectsOversizedActionArguments() throws {
+    let request = makeNotifyRequest(arguments: [String(repeating: "a", count: (512 * 1024) + 1)])
+
+    XCTAssertThrowsError(try decodeAgentRequest(try encodeNotifyRequest(request))) { error in
+      guard case WireCodecError.invalidRequest = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+    }
+  }
+
+  private func makeNotifyRequest(
+    title: String = "Build",
+    message: String = "Done",
+    arguments: [String] = []
+  ) -> NotifyRequest {
+    NotifyRequest(
+      requestId: UUID().uuidString.lowercased(),
+      title: title,
+      message: message,
+      sound: nil,
+      action: ActionPayload(executable: "/usr/bin/say", arguments: arguments)
+    )
+  }
 }

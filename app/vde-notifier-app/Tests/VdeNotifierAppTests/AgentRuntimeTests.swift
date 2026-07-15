@@ -352,6 +352,9 @@ final class UnixSocketTests: XCTestCase {
       [.modificationDate: Date().addingTimeInterval(-(60 * 60 * 24 * 8))],
       ofItemAtPath: actionURL(directory: actionsDirectory, requestId: requestId).path
     )
+    let serverFD = try makeListeningUnixSocket(path: socketPath)
+    var socketBefore = stat()
+    XCTAssertEqual(Darwin.lstat(socketPath, &socketBefore), 0)
 
     let lockPath = "\(socketPath).lock"
     let child = try startLockHolder(lockPath: lockPath)
@@ -360,6 +363,7 @@ final class UnixSocketTests: XCTestCase {
         child.terminate()
       }
       child.waitUntilExit()
+      Darwin.close(serverFD)
       try? FileManager.default.removeItem(at: baseDirectory)
     }
 
@@ -370,6 +374,9 @@ final class UnixSocketTests: XCTestCase {
       }
     }
     XCTAssertEqual(try store.take(requestId: requestId), action)
+    var socketAfter = stat()
+    XCTAssertEqual(Darwin.lstat(socketPath, &socketAfter), 0)
+    XCTAssertEqual(socketAfter.st_ino, socketBefore.st_ino)
   }
 
   func testRuntimePrunesExpiredActionsOnMaintenanceTimer() throws {
