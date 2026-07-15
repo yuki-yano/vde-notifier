@@ -179,6 +179,30 @@ describe("runNotify", () => {
     expect(sendNotificationMock).toHaveBeenCalledWith(expect.objectContaining({ sound: "Ping" }));
   });
 
+  it("skips Codex App title generation notifications automatically", async () => {
+    const payload = JSON.stringify({
+      type: "agent-turn-complete",
+      "thread-id": "019f6137-090b-7461-a65d-07c9e6adc68b",
+      "turn-id": "019f6137-1c05-7182-a4c1-7ecb7f420686",
+      client: "codex-app",
+      "input-messages": [],
+      "last-assistant-message": '{"title":"動画のレシピを抽出"}'
+    });
+    const options: CliOptions = {
+      mode: "notify",
+      dryRun: false,
+      verbose: false,
+      codex: true,
+      notifier: "terminal-notifier"
+    } as CliOptions;
+
+    const result = await __internal.runNotify(options, environmentReport, ["--codex", payload], "");
+
+    expect(result).toBe(0);
+    expect(sendNotificationMock).not.toHaveBeenCalled();
+    expect(resolveTmuxContextMock).not.toHaveBeenCalled();
+  });
+
   it("skips notification for codex subagent when configured", async () => {
     const originalHome = process.env.HOME;
     const tempHome = mkdtempSync(join(tmpdir(), "vde-notifier-codex-subagent-"));
@@ -790,6 +814,34 @@ describe("extractCodexMessage", () => {
       last_agent_message: "Current agent message"
     });
     expect(message).toBe("Legacy assistant message");
+  });
+});
+
+describe("isCodexTitleGenerationPayload", () => {
+  it("detects an agent turn whose assistant message contains only a non-empty title", () => {
+    expect(
+      __internal.isCodexTitleGenerationPayload({
+        type: "agent-turn-complete",
+        "last-assistant-message": ' { "title": "動画のレシピを抽出" } '
+      })
+    ).toBe(true);
+  });
+
+  it.each([
+    ["a regular assistant response", { type: "agent-turn-complete", "last-assistant-message": "完了しました" }],
+    [
+      "JSON with additional fields",
+      {
+        type: "agent-turn-complete",
+        "last-assistant-message": '{"title":"調査結果","summary":"完了しました"}'
+      }
+    ],
+    ["an empty title", { type: "agent-turn-complete", "last-assistant-message": '{"title":""}' }],
+    ["a non-string title", { type: "agent-turn-complete", "last-assistant-message": '{"title":42}' }],
+    ["a different event type", { type: "task_complete", "last-assistant-message": '{"title":"調査結果"}' }],
+    ["a different message field", { type: "agent-turn-complete", message: '{"title":"調査結果"}' }]
+  ])("does not classify %s as title generation", (_label, payload) => {
+    expect(__internal.isCodexTitleGenerationPayload(payload)).toBe(false);
   });
 });
 

@@ -59,6 +59,7 @@ vde-notifier --title "Build finished" --message "webpack completed"
 - `--codex`: Consume Codex-style JSON (see below) from a trailing argument, `CODEX_NOTIFICATION_PAYLOAD`, or stdin (in that priority order) and build the notification from it.
 - `--skip-codex-subagent`: Skip sending notifications when Codex payload belongs to a subagent turn (`thread-id` lookup from `~/.codex/sessions`).
 - `--skip-codex-non-interactive`: Skip sending notifications for Codex non-interactive turns (`source: "exec"` in `~/.codex/sessions`, such as `codex exec` / `codex review`).
+- Codex App title-generation turns are skipped automatically when `last-assistant-message` is a JSON object containing only a non-empty `title` field.
 - `--claude`: Consume Claude Code JSON piped on stdin (supports `transcript_path` to pull the latest assistant reply).
 - `--skip-claude-non-interactive`: Skip sending notifications when Claude non-interactive (`-p/--print --output-format json`) payloads are detected.
 - `--terminal <profile>`: Force a terminal profile (alacritty, wezterm, ghostty, etc.).

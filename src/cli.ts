@@ -42,6 +42,7 @@ type CodexContext = {
   readonly message?: string;
   readonly sound?: string;
   readonly threadId?: string;
+  readonly isTitleGeneration?: boolean;
   readonly isSubagent?: boolean;
   readonly isNonInteractive?: boolean;
 };
@@ -160,6 +161,29 @@ const extractCodexMessage = (payload: Record<string, unknown>): string | undefin
   }
 
   return undefined;
+};
+
+const isCodexTitleGenerationPayload = (payload: Record<string, unknown>): boolean => {
+  if (payload.type !== "agent-turn-complete") {
+    return false;
+  }
+
+  const message = asNonEmptyString(payload["last-assistant-message"]);
+  if (message === undefined) {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(message);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return false;
+    }
+
+    const record = parsed as Record<string, unknown>;
+    return Object.keys(record).length === 1 && asNonEmptyString(record.title) !== undefined;
+  } catch {
+    return false;
+  }
 };
 
 const extractSoundNameFromPath = (soundPath: string): string | undefined => {
@@ -752,6 +776,7 @@ const loadCodexContext = async (
       title: defaultAgentTitle("codex"),
       sound: resolveCodexSound(record),
       threadId,
+      isTitleGeneration: isCodexTitleGenerationPayload(record),
       ...sessionContext
     };
   } catch (error) {
@@ -1279,6 +1304,16 @@ const runNotify = async (
       ? await loadCodexContext(rawArgs, stdinOverride)
       : undefined;
 
+  if (options.codex && agentContext?.isTitleGeneration === true) {
+    logVerbose(options.verbose, options.logFile, {
+      stage: "notify",
+      skipped: true,
+      reason: "codex-title-generation",
+      context: agentContext
+    });
+    return 0;
+  }
+
   if (options.codex && options.skipCodexSubagent && agentContext?.isSubagent === true) {
     logVerbose(options.verbose, options.logFile, {
       stage: "notify",
@@ -1439,5 +1474,6 @@ export const __internal = {
   loadClaudeContext,
   detectClaudePrintModeFromProcessChain,
   extractCodexMessage,
+  isCodexTitleGenerationPayload,
   resolveCodexSound
 };
