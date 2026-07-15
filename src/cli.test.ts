@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
+import packageJson from "../package.json" with { type: "json" };
 import type { CliOptions, EnvironmentReport, FocusCommand, FocusPayload, TerminalProfile, TmuxContext } from "./types";
 import { __internal, main } from "./cli";
 
@@ -694,7 +695,7 @@ describe("main", () => {
       expect(await main()).toBe(0);
     });
 
-    expect(logSpy).toHaveBeenCalledWith("0.1.10");
+    expect(logSpy).toHaveBeenCalledWith(packageJson.version);
     expect(assertRuntimeSupportMock).not.toHaveBeenCalled();
     logSpy.mockRestore();
   });
@@ -756,7 +757,7 @@ describe("control options", () => {
     const originalVersion = process.env.npm_package_version;
     process.env.npm_package_version = "9.9.9";
     try {
-      expect(__internal.resolveCliVersion()).toBe("0.1.10");
+      expect(__internal.resolveCliVersion()).toBe(packageJson.version);
     } finally {
       if (originalVersion === undefined) {
         delete process.env.npm_package_version;
