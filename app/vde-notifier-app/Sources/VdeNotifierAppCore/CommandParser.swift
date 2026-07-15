@@ -57,7 +57,7 @@ public enum CommandParseError: Error, Equatable, CustomStringConvertible {
 
 public func parseCommandLine(_ arguments: [String]) throws -> ParsedCommand {
   guard let head = arguments.first else {
-    return .agentRun
+    return .help
   }
 
   switch head {

@@ -255,6 +255,57 @@ final class UnixSocketTests: XCTestCase {
     XCTAssertEqual(accepted.wait(timeout: .now() + 1), .success)
   }
 
+  func testAgentLockRejectsSecondOwner() throws {
+    let socketPath = makeSocketPath()
+    let lockPath = "\(socketPath).lock"
+    let readyPipe = Pipe()
+    let child = Process()
+    child.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+    child.arguments = [
+      "-c",
+      """
+      import fcntl, os, sys, time
+      fd = os.open(sys.argv[1], os.O_CREAT | os.O_RDWR, 0o600)
+      fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+      sys.stdout.buffer.write(b"1")
+      sys.stdout.buffer.flush()
+      time.sleep(5)
+      """,
+      lockPath,
+    ]
+    child.standardOutput = readyPipe
+    child.standardError = FileHandle.nullDevice
+    try child.run()
+    defer {
+      if child.isRunning {
+        child.terminate()
+      }
+      child.waitUntilExit()
+      unlink(lockPath)
+    }
+
+    XCTAssertEqual(readyPipe.fileHandleForReading.readData(ofLength: 1), Data("1".utf8))
+
+    XCTAssertThrowsError(try acquireAgentLock(path: lockPath)) { error in
+      guard case UnixSocketError.lockUnavailable = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+    }
+  }
+
+  func testStaleSocketRemovalRejectsRegularFile() throws {
+    let socketPath = makeSocketPath()
+    try Data("keep".utf8).write(to: URL(fileURLWithPath: socketPath))
+    defer { unlink(socketPath) }
+
+    XCTAssertThrowsError(try removeOwnedStaleSocket(path: socketPath)) { error in
+      guard case UnixSocketError.unsafeStaleSocket = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+    }
+    XCTAssertEqual(try String(contentsOfFile: socketPath, encoding: .utf8), "keep")
+  }
+
   private func makeSocketPath() -> String {
     let suffix = String(UUID().uuidString.prefix(8))
     let baseDirectory = URL(fileURLWithPath: "/tmp", isDirectory: true)

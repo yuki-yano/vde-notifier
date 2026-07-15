@@ -4,7 +4,9 @@ import Foundation
 enum UnixSocketError: Error, CustomStringConvertible {
   case pathTooLong(String)
   case connectionClosed
+  case lockUnavailable(String)
   case payloadTooLarge(actual: Int, maximum: Int)
+  case unsafeStaleSocket(String)
   case syscallFailed(name: String, errno: Int32)
 
   var description: String {
@@ -13,8 +15,12 @@ enum UnixSocketError: Error, CustomStringConvertible {
       return "Unix socket path is too long: \(path)"
     case .connectionClosed:
       return "Unix socket connection closed before the frame completed"
+    case let .lockUnavailable(path):
+      return "Notification agent lock is already held: \(path)"
     case let .payloadTooLarge(actual, maximum):
       return "Unix socket frame is too large: \(actual) bytes (maximum: \(maximum))"
+    case let .unsafeStaleSocket(path):
+      return "Refusing to remove unsafe stale socket entry: \(path)"
     case let .syscallFailed(name, code):
       let message = String(cString: strerror(code))
       return "\(name) failed (\(code)): \(message)"
@@ -56,8 +62,6 @@ func makeListeningUnixSocket(path: String) throws -> Int32 {
   }
   setNoSIGPIPE(on: fd)
 
-  unlink(path)
-
   do {
     var address = try makeUnixAddress(path: path)
     let bindResult = withUnsafePointer(to: &address) { pointer -> Int32 in
@@ -77,6 +81,49 @@ func makeListeningUnixSocket(path: String) throws -> Int32 {
   } catch {
     Darwin.close(fd)
     throw error
+  }
+}
+
+func acquireAgentLock(path: String) throws -> Int32 {
+  let fd = Darwin.open(path, O_CREAT | O_RDWR, S_IRUSR | S_IWUSR)
+  guard fd >= 0 else {
+    throw UnixSocketError.syscallFailed(name: "open", errno: errno)
+  }
+
+  var lock = flock()
+  lock.l_type = Int16(F_WRLCK)
+  lock.l_whence = Int16(SEEK_SET)
+  lock.l_start = 0
+  lock.l_len = 0
+
+  guard Darwin.fcntl(fd, F_SETLK, &lock) == 0 else {
+    let code = errno
+    Darwin.close(fd)
+    if code == EACCES || code == EAGAIN {
+      throw UnixSocketError.lockUnavailable(path)
+    }
+    throw UnixSocketError.syscallFailed(name: "fcntl", errno: code)
+  }
+
+  return fd
+}
+
+func removeOwnedStaleSocket(path: String) throws {
+  var metadata = stat()
+  guard Darwin.lstat(path, &metadata) == 0 else {
+    if errno == ENOENT {
+      return
+    }
+    throw UnixSocketError.syscallFailed(name: "lstat", errno: errno)
+  }
+
+  let isSocket = (metadata.st_mode & S_IFMT) == S_IFSOCK
+  guard isSocket, metadata.st_uid == geteuid() else {
+    throw UnixSocketError.unsafeStaleSocket(path)
+  }
+
+  guard unlink(path) == 0 else {
+    throw UnixSocketError.syscallFailed(name: "unlink", errno: errno)
   }
 }
 

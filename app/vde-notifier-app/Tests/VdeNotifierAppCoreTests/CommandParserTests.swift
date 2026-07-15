@@ -48,9 +48,9 @@ final class CommandParserTests: XCTestCase {
     }
   }
 
-  func testParseDefaultAgentRun() throws {
+  func testParseDefaultHelp() throws {
     let command = try parseCommandLine([])
-    XCTAssertEqual(command, .agentRun)
+    XCTAssertEqual(command, .help)
   }
 
   func testParseAgentStart() throws {

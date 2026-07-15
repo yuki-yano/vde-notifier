@@ -106,6 +106,7 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   private let socketPath: String
   private let actionStore: ActionStore
   private var serverFD: Int32 = -1
+  private var lockFD: Int32 = -1
   private let serverQueue = DispatchQueue(label: "com.yuki-yano.vde-notifier-app.agent-server")
   private let clientQueue = DispatchQueue(
     label: "com.yuki-yano.vde-notifier-app.agent-clients",
@@ -124,7 +125,20 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   func start() throws {
     center.delegate = self
     registerNotificationCategory()
-    serverFD = try makeListeningUnixSocket(path: socketPath)
+    lockFD = try acquireAgentLock(path: "\(socketPath).lock")
+    do {
+      if FileManager.default.fileExists(atPath: socketPath) {
+        if AgentBootstrap.isRunning(socketPath: socketPath) {
+          throw UnixSocketError.lockUnavailable("\(socketPath).lock")
+        }
+        try removeOwnedStaleSocket(path: socketPath)
+      }
+      serverFD = try makeListeningUnixSocket(path: socketPath)
+    } catch {
+      Darwin.close(lockFD)
+      lockFD = -1
+      throw error
+    }
     serverQueue.async { [weak self] in
       self?.acceptLoop()
     }
@@ -136,6 +150,10 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
       serverFD = -1
     }
     unlink(socketPath)
+    if lockFD >= 0 {
+      Darwin.close(lockFD)
+      lockFD = -1
+    }
   }
 
   @MainActor

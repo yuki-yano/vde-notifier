@@ -28,7 +28,12 @@ struct VdeNotifierAppMain {
 
   static func main() {
     do {
-      let command = try parseCommandLine(Array(CommandLine.arguments.dropFirst()))
+      let arguments = Array(CommandLine.arguments.dropFirst())
+      let command: ParsedCommand = if arguments.isEmpty && Bundle.main.bundleURL.pathExtension == "app" {
+        .agentRun
+      } else {
+        try parseCommandLine(arguments)
+      }
       switch command {
       case let .notify(notify):
         try runNotify(notify)
