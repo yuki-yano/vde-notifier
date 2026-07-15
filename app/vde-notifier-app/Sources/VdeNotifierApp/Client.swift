@@ -107,7 +107,7 @@ enum AgentBootstrap {
       return bundleURL
     }
 
-    let executableURL = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+    let executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.arguments[0]).resolvingSymlinksInPath()
     let path = executableURL.path
     guard let range = path.range(of: "/Contents/MacOS/") else {
       return nil
