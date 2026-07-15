@@ -21,27 +21,41 @@ enum ClientError: Error, CustomStringConvertible {
 
 struct AgentClient {
   let socketPath: String
+  var timeout: TimeInterval = 2.0
 
   func send(_ request: NotifyRequest) throws -> AgentResponse {
     let fd = try connectUnixSocket(path: socketPath)
     defer { Darwin.close(fd) }
+    try setSocketTimeout(on: fd, seconds: timeout)
 
     let requestData = try encodeNotifyRequest(request)
-    try writeAll(requestData, to: fd)
-    Darwin.shutdown(fd, SHUT_WR)
+    try writeFrame(requestData, to: fd)
 
-    let responseData = try readAll(from: fd)
+    let responseData = try readFrame(from: fd)
     do {
       return try decodeAgentResponse(responseData)
     } catch {
       throw ClientError.invalidResponse(String(describing: error))
     }
   }
+
+  func ping() -> Bool {
+    do {
+      let fd = try connectUnixSocket(path: socketPath)
+      defer { Darwin.close(fd) }
+      try setSocketTimeout(on: fd, seconds: timeout)
+      try writeFrame(try encodePingRequest(), to: fd)
+      let response = try decodeAgentResponse(readFrame(from: fd))
+      return response.ok && response.code == "pong"
+    } catch {
+      return false
+    }
+  }
 }
 
 enum AgentBootstrap {
   static func ensureRunning(socketPath: String, timeout: TimeInterval = 3.0) throws {
-    if socketExistsAndReachable(path: socketPath) {
+    if isRunning(socketPath: socketPath) {
       return
     }
 
@@ -49,13 +63,17 @@ enum AgentBootstrap {
 
     let deadline = Date().addingTimeInterval(timeout)
     while Date() < deadline {
-      if socketExistsAndReachable(path: socketPath) {
+      if isRunning(socketPath: socketPath) {
         return
       }
       Thread.sleep(forTimeInterval: 0.1)
     }
 
     throw ClientError.agentStartFailed
+  }
+
+  static func isRunning(socketPath: String) -> Bool {
+    AgentClient(socketPath: socketPath).ping()
   }
 
   private static func launchAgent() throws {

@@ -3,18 +3,27 @@ import Foundation
 
 enum UnixSocketError: Error, CustomStringConvertible {
   case pathTooLong(String)
+  case connectionClosed
+  case payloadTooLarge(actual: Int, maximum: Int)
   case syscallFailed(name: String, errno: Int32)
 
   var description: String {
     switch self {
     case let .pathTooLong(path):
       return "Unix socket path is too long: \(path)"
+    case .connectionClosed:
+      return "Unix socket connection closed before the frame completed"
+    case let .payloadTooLarge(actual, maximum):
+      return "Unix socket frame is too large: \(actual) bytes (maximum: \(maximum))"
     case let .syscallFailed(name, code):
       let message = String(cString: strerror(code))
       return "\(name) failed (\(code)): \(message)"
     }
   }
 }
+
+let maximumFramePayloadBytes = 1024 * 1024
+private let frameHeaderBytes = 4
 
 func connectUnixSocket(path: String) throws -> Int32 {
   let fd = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
@@ -71,25 +80,103 @@ func makeListeningUnixSocket(path: String) throws -> Int32 {
   }
 }
 
-func readAll(from fd: Int32) throws -> Data {
-  var data = Data()
-  var buffer = [UInt8](repeating: 0, count: 4096)
-
+func acceptClients(
+  on serverFD: Int32,
+  clientQueue: DispatchQueue,
+  handler: @escaping @Sendable (Int32) -> Void
+) {
   while true {
-    let bytesRead = Darwin.read(fd, &buffer, buffer.count)
-    if bytesRead == 0 {
-      break
-    }
-    if bytesRead < 0 {
+    let clientFD = Darwin.accept(serverFD, nil, nil)
+    if clientFD < 0 {
       if errno == EINTR {
         continue
       }
-      throw UnixSocketError.syscallFailed(name: "read", errno: errno)
+      if errno == EBADF || errno == EINVAL {
+        return
+      }
+      continue
     }
-    data.append(contentsOf: buffer[0 ..< Int(bytesRead)])
+    clientQueue.async {
+      handler(clientFD)
+    }
+  }
+}
+
+func setSocketTimeout(on fd: Int32, seconds: TimeInterval) throws {
+  let boundedSeconds = max(seconds, 0.001)
+  var timeout = timeval(
+    tv_sec: Int(boundedSeconds),
+    tv_usec: Int32((boundedSeconds.truncatingRemainder(dividingBy: 1)) * 1_000_000)
+  )
+
+  for option in [SO_RCVTIMEO, SO_SNDTIMEO] {
+    let result = withUnsafePointer(to: &timeout) { pointer in
+      Darwin.setsockopt(fd, SOL_SOCKET, option, pointer, socklen_t(MemoryLayout<timeval>.size))
+    }
+    guard result == 0 else {
+      throw UnixSocketError.syscallFailed(name: "setsockopt", errno: errno)
+    }
+  }
+}
+
+private func readExactly(_ byteCount: Int, from fd: Int32) throws -> Data {
+  var data = Data(count: byteCount)
+  var offset = 0
+
+  try data.withUnsafeMutableBytes { rawBuffer in
+    guard let baseAddress = rawBuffer.baseAddress else {
+      return
+    }
+
+    while offset < byteCount {
+      let bytesRead = Darwin.read(fd, baseAddress.advanced(by: offset), byteCount - offset)
+      if bytesRead == 0 {
+        throw UnixSocketError.connectionClosed
+      }
+      if bytesRead < 0 {
+        if errno == EINTR {
+          continue
+        }
+        throw UnixSocketError.syscallFailed(name: "read", errno: errno)
+      }
+      offset += bytesRead
+    }
   }
 
   return data
+}
+
+func readFrame(from fd: Int32, maximumPayloadBytes: Int = maximumFramePayloadBytes) throws -> Data {
+  let header = try readExactly(frameHeaderBytes, from: fd)
+  let length = header.reduce(UInt32(0)) { partial, byte in
+    (partial << 8) | UInt32(byte)
+  }
+  let payloadLength = Int(length)
+
+  guard payloadLength <= maximumPayloadBytes else {
+    throw UnixSocketError.payloadTooLarge(actual: payloadLength, maximum: maximumPayloadBytes)
+  }
+  guard payloadLength > 0 else {
+    return Data()
+  }
+
+  return try readExactly(payloadLength, from: fd)
+}
+
+func writeFrame(_ data: Data, to fd: Int32) throws {
+  guard data.count <= maximumFramePayloadBytes else {
+    throw UnixSocketError.payloadTooLarge(actual: data.count, maximum: maximumFramePayloadBytes)
+  }
+
+  let length = UInt32(data.count)
+  let header = Data([
+    UInt8((length >> 24) & 0xFF),
+    UInt8((length >> 16) & 0xFF),
+    UInt8((length >> 8) & 0xFF),
+    UInt8(length & 0xFF),
+  ])
+  try writeAll(header, to: fd)
+  try writeAll(data, to: fd)
 }
 
 func writeAll(_ data: Data, to fd: Int32) throws {
@@ -101,6 +188,9 @@ func writeAll(_ data: Data, to fd: Int32) throws {
 
     while offset < rawBuffer.count {
       let bytesWritten = Darwin.write(fd, baseAddress.advanced(by: offset), rawBuffer.count - offset)
+      if bytesWritten == 0 {
+        throw UnixSocketError.connectionClosed
+      }
       if bytesWritten < 0 {
         if errno == EINTR {
           continue
@@ -109,16 +199,6 @@ func writeAll(_ data: Data, to fd: Int32) throws {
       }
       offset += bytesWritten
     }
-  }
-}
-
-func socketExistsAndReachable(path: String) -> Bool {
-  do {
-    let fd = try connectUnixSocket(path: path)
-    Darwin.close(fd)
-    return true
-  } catch {
-    return false
   }
 }
 

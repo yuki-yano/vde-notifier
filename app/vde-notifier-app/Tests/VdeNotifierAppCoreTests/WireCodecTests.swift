@@ -44,4 +44,10 @@ final class WireCodecTests: XCTestCase {
       }
     }
   }
+
+  func testPingRequestRoundTrip() throws {
+    let encoded = try encodePingRequest()
+    XCTAssertEqual(try decodeAgentRequest(encoded), .ping(PingRequest()))
+    XCTAssertEqual(AgentResponse.pong().code, "pong")
+  }
 }

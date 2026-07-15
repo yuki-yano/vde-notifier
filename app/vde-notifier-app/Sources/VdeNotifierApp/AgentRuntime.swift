@@ -107,6 +107,10 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   private let actionStore: ActionStore
   private var serverFD: Int32 = -1
   private let serverQueue = DispatchQueue(label: "com.yuki-yano.vde-notifier-app.agent-server")
+  private let clientQueue = DispatchQueue(
+    label: "com.yuki-yano.vde-notifier-app.agent-clients",
+    attributes: .concurrent
+  )
 
   private static let categoryIdentifier = "com.yuki-yano.vde-notifier-app.focus"
   private static let actionIdentifier = "focus-return"
@@ -126,6 +130,14 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
     }
   }
 
+  func stop() {
+    if serverFD >= 0 {
+      Darwin.close(serverFD)
+      serverFD = -1
+    }
+    unlink(socketPath)
+  }
+
   @MainActor
   func primeNotificationAuthorization() {
     center.getNotificationSettings { [weak self] settings in
@@ -143,15 +155,8 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   }
 
   private func acceptLoop() {
-    while true {
-      let clientFD = Darwin.accept(serverFD, nil, nil)
-      if clientFD < 0 {
-        if errno == EINTR {
-          continue
-        }
-        continue
-      }
-      handleClient(clientFD: clientFD)
+    acceptClients(on: serverFD, clientQueue: clientQueue) { [weak self] clientFD in
+      self?.handleClient(clientFD: clientFD)
     }
   }
 
@@ -160,19 +165,26 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
     setNoSIGPIPE(on: clientFD)
 
     do {
-      let inputData = try readAll(from: clientFD)
+      try setSocketTimeout(on: clientFD, seconds: 2.0)
+      let inputData = try readFrame(from: clientFD)
       if inputData.isEmpty {
         return
       }
-      let request = try decodeNotifyRequest(inputData)
-      let response = try handleNotifyRequest(request)
+      let request = try decodeAgentRequest(inputData)
+      let response: AgentResponse
+      switch request {
+      case let .notify(notifyRequest):
+        response = try handleNotifyRequest(notifyRequest)
+      case .ping:
+        response = .pong()
+      }
       let responseData = try encodeAgentResponse(response)
-      try writeAll(responseData, to: clientFD)
+      try writeFrame(responseData, to: clientFD)
     } catch {
       let failure = AgentResponse.failure(code: "bad_request", message: String(describing: error))
       do {
         let responseData = try encodeAgentResponse(failure)
-        try writeAll(responseData, to: clientFD)
+        try writeFrame(responseData, to: clientFD)
       } catch {
         // No-op: client has likely already disconnected.
       }

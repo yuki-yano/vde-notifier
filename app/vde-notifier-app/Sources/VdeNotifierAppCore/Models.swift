@@ -1,5 +1,7 @@
 import Foundation
 
+public let agentProtocolVersion = 2
+
 public struct ActionPayload: Codable, Equatable {
   public let executable: String
   public let arguments: [String]
@@ -21,7 +23,7 @@ public struct NotifyRequest: Codable, Equatable {
   public let source: String?
 
   public init(
-    version: Int = 1,
+    version: Int = agentProtocolVersion,
     type: String = "notify",
     requestId: String,
     title: String,
@@ -50,6 +52,21 @@ public struct NotifyRequest: Codable, Equatable {
     case action
     case source
   }
+}
+
+public struct PingRequest: Codable, Equatable {
+  public let version: Int
+  public let type: String
+
+  public init(version: Int = agentProtocolVersion, type: String = "ping") {
+    self.version = version
+    self.type = type
+  }
+}
+
+public enum AgentRequest: Equatable {
+  case notify(NotifyRequest)
+  case ping(PingRequest)
 }
 
 public struct AgentResponse: Codable, Equatable {
@@ -81,6 +98,10 @@ public struct AgentResponse: Codable, Equatable {
 
   public static func failure(code: String, message: String) -> AgentResponse {
     AgentResponse(ok: false, code: code, message: message)
+  }
+
+  public static func pong() -> AgentResponse {
+    AgentResponse(ok: true, code: "pong")
   }
 
   enum CodingKeys: String, CodingKey {

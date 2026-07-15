@@ -111,7 +111,7 @@ struct VdeNotifierAppMain {
   private static func runAgentStatus() {
     let socketPath = AppPaths.socketURL().path
     let status = [
-      "running": socketExistsAndReachable(path: socketPath),
+      "running": AgentBootstrap.isRunning(socketPath: socketPath),
       "socket": FileManager.default.fileExists(atPath: socketPath)
     ] as [String: Any]
     printJSON(status)
@@ -129,7 +129,7 @@ struct VdeNotifierAppMain {
     sem.wait()
 
     let report: [String: Any] = [
-      "running": socketExistsAndReachable(path: AppPaths.socketURL().path),
+      "running": AgentBootstrap.isRunning(socketPath: AppPaths.socketURL().path),
       "authorization": authorizationLabel(authorization.get()),
       "socket_path": AppPaths.socketURL().path,
       "actions_path": AppPaths.actionsURL().path

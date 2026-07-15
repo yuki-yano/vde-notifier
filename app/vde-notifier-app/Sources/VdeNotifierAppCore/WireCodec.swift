@@ -17,6 +17,10 @@ public enum WireCodecError: Error, CustomStringConvertible {
   }
 }
 
+private struct RequestHeader: Decodable {
+  let type: String
+}
+
 private let requestEncoder: JSONEncoder = {
   let encoder = JSONEncoder()
   encoder.outputFormatting = [.withoutEscapingSlashes]
@@ -35,6 +39,30 @@ public func decodeNotifyRequest(_ data: Data) throws -> NotifyRequest {
   let payloadData = try sanitizedPayload(data)
   do {
     return try requestDecoder.decode(NotifyRequest.self, from: payloadData)
+  } catch {
+    throw WireCodecError.invalidJSON(error.localizedDescription)
+  }
+}
+
+public func encodePingRequest(_ request: PingRequest = PingRequest()) throws -> Data {
+  try requestEncoder.encode(request)
+}
+
+public func decodeAgentRequest(_ data: Data) throws -> AgentRequest {
+  let payloadData = try sanitizedPayload(data)
+
+  do {
+    let header = try requestDecoder.decode(RequestHeader.self, from: payloadData)
+    switch header.type {
+    case "notify":
+      return .notify(try requestDecoder.decode(NotifyRequest.self, from: payloadData))
+    case "ping":
+      return .ping(try requestDecoder.decode(PingRequest.self, from: payloadData))
+    default:
+      throw WireCodecError.invalidJSON("Unsupported request type: \(header.type)")
+    }
+  } catch let error as WireCodecError {
+    throw error
   } catch {
     throw WireCodecError.invalidJSON(error.localizedDescription)
   }
