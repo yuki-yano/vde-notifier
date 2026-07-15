@@ -682,6 +682,20 @@ describe("control options", () => {
     const version = __internal.resolveCliVersion();
     expect(version).toMatch(/^\d+\.\d+\.\d+/);
   });
+
+  it("resolves the package version when npm does not provide one", () => {
+    const originalVersion = process.env.npm_package_version;
+    delete process.env.npm_package_version;
+    try {
+      expect(__internal.resolveCliVersion()).toBe("0.1.10");
+    } finally {
+      if (originalVersion === undefined) {
+        delete process.env.npm_package_version;
+      } else {
+        process.env.npm_package_version = originalVersion;
+      }
+    }
+  });
 });
 
 describe("resolveCodexSound", () => {
