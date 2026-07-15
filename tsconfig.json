@@ -9,10 +9,6 @@
     "strict": true,
     "skipLibCheck": true,
     "types": ["node"],
-    "baseUrl": "./src",
-    "paths": {
-      "@/*": ["*"]
-    },
     "outDir": "dist",
     "rootDir": "src",
     "noEmit": false
