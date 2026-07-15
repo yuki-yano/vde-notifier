@@ -72,6 +72,7 @@ jobs:
         run: |
           bun run build
           bun run test
+          bun dist/cli.js --help >/dev/null
           test "$(bun dist/cli.js --version)" = "$(bun -p "require('./package.json').version")"
 
   swift:
@@ -88,3 +89,5 @@ jobs:
           plutil -lint build/VdeNotifierApp.app/Contents/Info.plist
           codesign --verify --deep --strict build/VdeNotifierApp.app
           xcrun lipo build/VdeNotifierApp.app/Contents/MacOS/vde-notifier-app -verify_arch arm64 x86_64
+          test "$(build/VdeNotifierApp.app/Contents/MacOS/vde-notifier-app --version)" = "0.0.0-dev"
+          build/VdeNotifierApp.app/Contents/MacOS/vde-notifier-app --help | grep -F "vde-notifier-app doctor"

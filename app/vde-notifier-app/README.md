@@ -24,6 +24,7 @@ app/vde-notifier-app/scripts/build-app.sh
 This creates:
 
 - `build/VdeNotifierApp.app`
+- A macOS 14+ universal executable with `arm64` and `x86_64` slices
 - An ad-hoc signed app bundle (`Identifier=com.yuki-yano.vde-notifier-app.agent`)
 
 If `doctor` stays `notDetermined` and the app does not appear in Notification settings, verify the signature identifier:
@@ -54,3 +55,10 @@ vde-notifier-app agent status
 vde-notifier-app doctor
 vde-notifier-app --version
 ```
+
+`doctor` reports the protocol health check as `running`, notification permission lookup as `authorization_check`, and persistent action directory access as `actions_writable`.
+
+## Upgrading to agent protocol v2
+
+Replace the complete app bundle so the command client and resident agent are updated together.
+The v2 agent does not import the legacy single-file `actions.json`; any pending notification actions in that file are intentionally discarded.

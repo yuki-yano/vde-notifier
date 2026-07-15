@@ -8,10 +8,12 @@ vde-notifier is a tmux-aware notification CLI for macOS. It surfaces long-runnin
 
 - macOS 14 or later
 - `tmux`, `vde-notifier-app` (default notifier)
-- Node.js 22+ or Bun 1.1+
-- `pnpm`
+- Node.js 22+ or Bun 1.3.14+
+- pnpm 11.13+
 
 `vde-notifier` is published as a macOS-only npm package (`os: darwin`, `engines.node: >=22`).
+
+The `vde-notifier-app` bundle supports macOS 14 or later and contains both `arm64` and `x86_64` slices.
 
 ```bash
 # install default notifier backend
@@ -111,6 +113,12 @@ Environment overrides:
 - `VDE_NOTIFIER_TERMINAL=alacritty` sets the default terminal profile when `--terminal` is omitted.
   Valid aliases: `terminal`, `apple-terminal`, `mac-terminal`, `iterm`, `iterm2`, `alacritty`, `kitty`, `wezterm`, `hyper`, `ghostty` (non-matching values fall back to Terminal.app).
 - `VDE_NOTIFIER_LOG_FILE=/path/to/diagnostics.log` mirrors `--log-file` so every run writes diagnostics even without passing the CLI flag.
+
+### Upgrade note for agent protocol v2
+
+Upgrade `vde-notifier-app` as one app bundle so its command client and resident agent use the same protocol version.
+The v2 agent intentionally does not read the legacy `actions.json` store; pending notification actions from the previous format are discarded during the upgrade.
+After upgrading, run `vde-notifier-app doctor` and confirm `running`, `authorization_check`, and `actions_writable` report healthy values.
 
 ## Typical Workflow
 
