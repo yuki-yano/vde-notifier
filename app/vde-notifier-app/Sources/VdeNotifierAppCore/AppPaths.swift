@@ -15,9 +15,9 @@ public enum AppPaths {
       .appendingPathComponent("agent.sock", isDirectory: false)
   }
 
-  public static func actionsURL(fileManager: FileManager = .default) -> URL {
+  public static func actionsDirectoryURL(fileManager: FileManager = .default) -> URL {
     applicationSupportDirectory(fileManager: fileManager)
-      .appendingPathComponent("actions.json", isDirectory: false)
+      .appendingPathComponent("actions", isDirectory: true)
   }
 
   public static func logsDirectory(fileManager: FileManager = .default) -> URL {

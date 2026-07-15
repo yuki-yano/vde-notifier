@@ -92,7 +92,8 @@ struct VdeNotifierAppMain {
     try prepareRuntimeDirectories()
     let runtime = NotificationAgentRuntime(
       socketPath: AppPaths.socketURL().path,
-      actionStoreURL: AppPaths.actionsURL()
+      actionStoreURL: AppPaths.actionsDirectoryURL(),
+      logURL: AppPaths.agentLogURL()
     )
 
     if Bundle.main.bundleURL.pathExtension == "app" {
@@ -137,7 +138,7 @@ struct VdeNotifierAppMain {
       "running": AgentBootstrap.isRunning(socketPath: AppPaths.socketURL().path),
       "authorization": authorizationLabel(authorization.get()),
       "socket_path": AppPaths.socketURL().path,
-      "actions_path": AppPaths.actionsURL().path
+      "actions_path": AppPaths.actionsDirectoryURL().path
     ]
     printJSON(report)
   }

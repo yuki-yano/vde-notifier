@@ -4,7 +4,7 @@ import XCTest
 final class WireCodecTests: XCTestCase {
   func testNotifyRequestRoundTrip() throws {
     let request = NotifyRequest(
-      requestId: "req-1",
+      requestId: "6ad1a90f-2d12-4f7c-a0bc-8c81b93a96b2",
       title: "Build",
       message: "Done",
       sound: "Ping",
@@ -49,5 +49,38 @@ final class WireCodecTests: XCTestCase {
     let encoded = try encodePingRequest()
     XCTAssertEqual(try decodeAgentRequest(encoded), .ping(PingRequest()))
     XCTAssertEqual(AgentResponse.pong().code, "pong")
+  }
+
+  func testDecodeRejectsUnsupportedVersion() throws {
+    let request = NotifyRequest(
+      version: agentProtocolVersion + 1,
+      requestId: "6ad1a90f-2d12-4f7c-a0bc-8c81b93a96b2",
+      title: "Build",
+      message: "Done",
+      sound: nil,
+      action: ActionPayload(executable: "/usr/bin/say", arguments: [])
+    )
+
+    XCTAssertThrowsError(try decodeAgentRequest(try encodeNotifyRequest(request))) { error in
+      guard case WireCodecError.unsupportedVersion = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+    }
+  }
+
+  func testDecodeRejectsInvalidRequestId() throws {
+    let request = NotifyRequest(
+      requestId: "not-a-uuid",
+      title: "Build",
+      message: "Done",
+      sound: nil,
+      action: ActionPayload(executable: "/usr/bin/say", arguments: [])
+    )
+
+    XCTAssertThrowsError(try decodeAgentRequest(try encodeNotifyRequest(request))) { error in
+      guard case WireCodecError.invalidRequest = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+    }
   }
 }

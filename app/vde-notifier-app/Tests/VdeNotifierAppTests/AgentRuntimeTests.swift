@@ -6,91 +6,102 @@ import XCTest
 
 final class ActionStoreTests: XCTestCase {
   func testSaveAndTakeAction() throws {
-    let tempDirectory = makeTemporaryDirectory()
-    defer { try? FileManager.default.removeItem(at: tempDirectory) }
-
-    let storeURL = tempDirectory.appendingPathComponent("actions.json", isDirectory: false)
-    let store = ActionStore(fileURL: storeURL)
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = ActionStore(directoryURL: directory)
+    let requestId = UUID().uuidString.lowercased()
     let action = ActionPayload(executable: "/usr/bin/say", arguments: ["done"])
 
-    try store.save(requestId: "req-1", action: action)
-    let loaded = try store.take(requestId: "req-1")
-    let missing = try store.take(requestId: "req-1")
+    try store.save(requestId: requestId, action: action)
 
-    XCTAssertEqual(loaded, action)
-    XCTAssertNil(missing)
+    XCTAssertEqual(try store.take(requestId: requestId), action)
+    XCTAssertNil(try store.take(requestId: requestId))
   }
 
-  func testSavePrunesExpiredEntries() throws {
-    let tempDirectory = makeTemporaryDirectory()
-    defer { try? FileManager.default.removeItem(at: tempDirectory) }
+  func testSaveRejectsDuplicateRequestId() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = ActionStore(directoryURL: directory)
+    let requestId = UUID().uuidString.lowercased()
+    let action = ActionPayload(executable: "/usr/bin/say", arguments: ["done"])
+    try store.save(requestId: requestId, action: action)
 
-    let storeURL = tempDirectory.appendingPathComponent("actions.json", isDirectory: false)
-    try writeActionsFixture(to: storeURL)
-    let store = ActionStore(fileURL: storeURL)
-
-    try store.save(requestId: "new", action: ActionPayload(executable: "/usr/bin/say", arguments: ["new"]))
-
-    let table = try readActionsJSON(from: storeURL)
-    XCTAssertNil(table["expired"])
-    XCTAssertNotNil(table["recent"])
-    XCTAssertNotNil(table["new"])
+    XCTAssertThrowsError(try store.save(requestId: requestId, action: action)) { error in
+      guard case ActionStoreError.duplicateRequestId = error else {
+        return XCTFail("Unexpected error: \(error)")
+      }
+    }
   }
 
-  func testTakePersistsPrunedTableWhenRequestIsMissing() throws {
-    let tempDirectory = makeTemporaryDirectory()
-    defer { try? FileManager.default.removeItem(at: tempDirectory) }
+  func testCorruptActionDoesNotAffectAnotherRequest() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = ActionStore(directoryURL: directory)
+    let validId = UUID().uuidString.lowercased()
+    let corruptId = UUID().uuidString.lowercased()
+    let action = ActionPayload(executable: "/usr/bin/say", arguments: ["valid"])
+    try store.save(requestId: validId, action: action)
+    try Data("not-json".utf8).write(to: actionURL(directory: directory, requestId: corruptId))
 
-    let storeURL = tempDirectory.appendingPathComponent("actions.json", isDirectory: false)
-    try writeActionsFixture(to: storeURL)
-    let store = ActionStore(fileURL: storeURL)
+    XCTAssertThrowsError(try store.take(requestId: corruptId))
+    XCTAssertEqual(try store.take(requestId: validId), action)
+  }
 
-    let missing = try store.take(requestId: "missing")
-    XCTAssertNil(missing)
+  func testConcurrentSavesKeepEveryAction() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = ActionStore(directoryURL: directory)
+    let requestIds = (0 ..< 20).map { _ in UUID().uuidString.lowercased() }
+    let failures = LockedValue<[String]>([])
 
-    let table = try readActionsJSON(from: storeURL)
-    XCTAssertNil(table["expired"])
-    XCTAssertNotNil(table["recent"])
+    DispatchQueue.concurrentPerform(iterations: requestIds.count) { index in
+      do {
+        try store.save(
+          requestId: requestIds[index],
+          action: ActionPayload(executable: "/usr/bin/say", arguments: [String(index)])
+        )
+      } catch {
+        failures.withValue { $0.append(String(describing: error)) }
+      }
+    }
+
+    XCTAssertEqual(failures.get(), [])
+    for (index, requestId) in requestIds.enumerated() {
+      XCTAssertEqual(
+        try store.take(requestId: requestId),
+        ActionPayload(executable: "/usr/bin/say", arguments: [String(index)])
+      )
+    }
+  }
+
+  func testPruneExpiredRemovesOnlyOldActionFiles() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let store = ActionStore(directoryURL: directory)
+    let expiredId = UUID().uuidString.lowercased()
+    let recentId = UUID().uuidString.lowercased()
+    let action = ActionPayload(executable: "/usr/bin/say", arguments: ["done"])
+    try store.save(requestId: expiredId, action: action)
+    try store.save(requestId: recentId, action: action)
+    try FileManager.default.setAttributes(
+      [.modificationDate: Date().addingTimeInterval(-(60 * 60 * 24 * 8))],
+      ofItemAtPath: actionURL(directory: directory, requestId: expiredId).path
+    )
+
+    try store.pruneExpired()
+
+    XCTAssertNil(try store.take(requestId: expiredId))
+    XCTAssertEqual(try store.take(requestId: recentId), action)
   }
 
   private func makeTemporaryDirectory() -> URL {
-    let directory = FileManager.default.temporaryDirectory
+    FileManager.default.temporaryDirectory
       .appendingPathComponent("vde-notifier-app-action-store-tests", isDirectory: true)
       .appendingPathComponent(UUID().uuidString, isDirectory: true)
-    try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    return directory
   }
 
-  private func writeActionsFixture(to path: URL) throws {
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
-    let expired = formatter.string(from: Date().addingTimeInterval(-(60 * 60 * 24 * 8)))
-    let recent = formatter.string(from: Date())
-    let payload: [String: [String: Any]] = [
-      "expired": [
-        "executable": "/usr/bin/say",
-        "arguments": ["old"],
-        "createdAt": expired
-      ],
-      "recent": [
-        "executable": "/usr/bin/say",
-        "arguments": ["new"],
-        "createdAt": recent
-      ]
-    ]
-    let data = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
-    try data.write(to: path)
-  }
-
-  private func readActionsJSON(from path: URL) throws -> [String: Any] {
-    let data = try Data(contentsOf: path)
-    let value = try JSONSerialization.jsonObject(with: data)
-    guard let table = value as? [String: Any] else {
-      XCTFail("actions.json must be a dictionary")
-      return [:]
-    }
-    return table
+  private func actionURL(directory: URL, requestId: String) -> URL {
+    directory.appendingPathComponent("\(requestId).json", isDirectory: false)
   }
 }
 
@@ -164,7 +175,7 @@ final class UnixSocketTests: XCTestCase {
     }
 
     let request = NotifyRequest(
-      requestId: "test-request",
+      requestId: UUID().uuidString.lowercased(),
       title: "Title",
       message: "Message",
       sound: "Ping",

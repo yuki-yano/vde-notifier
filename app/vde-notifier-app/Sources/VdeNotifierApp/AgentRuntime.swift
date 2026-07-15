@@ -8,96 +8,105 @@ private struct StoredAction: Codable {
   let createdAt: String
 }
 
+enum ActionStoreError: Error, CustomStringConvertible {
+  case duplicateRequestId(String)
+  case invalidRequestId(String)
+
+  var description: String {
+    switch self {
+    case let .duplicateRequestId(requestId):
+      return "Action already exists for request ID: \(requestId)"
+    case let .invalidRequestId(requestId):
+      return "Invalid action request ID: \(requestId)"
+    }
+  }
+}
+
 final class ActionStore {
-  private let fileURL: URL
+  private let directoryURL: URL
   private let queue = DispatchQueue(label: "com.yuki-yano.vde-notifier-app.action-store")
   private let encoder = JSONEncoder()
   private let decoder = JSONDecoder()
   private static let actionRetentionInterval: TimeInterval = 60 * 60 * 24 * 7
-  private static let timestampFormatter: ISO8601DateFormatter = {
+  private let timestampFormatter: ISO8601DateFormatter = {
     let formatter = ISO8601DateFormatter()
     formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     return formatter
   }()
 
-  init(fileURL: URL) {
-    self.fileURL = fileURL
+  init(directoryURL: URL) {
+    self.directoryURL = directoryURL
     encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
   }
 
   func save(requestId: String, action: ActionPayload) throws {
     try queue.sync {
-      var table = try loadTable()
-      _ = pruneExpiredEntries(&table)
-      table[requestId] = StoredAction(
+      let fileURL = try actionURL(requestId: requestId)
+      try FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+      guard !FileManager.default.fileExists(atPath: fileURL.path) else {
+        throw ActionStoreError.duplicateRequestId(requestId)
+      }
+      let stored = StoredAction(
         executable: action.executable,
         arguments: action.arguments,
         createdAt: iso8601Now()
       )
-      try persist(table)
+      let data = try encoder.encode(stored)
+      try data.write(to: fileURL, options: .atomic)
     }
   }
 
   func take(requestId: String) throws -> ActionPayload? {
     try queue.sync {
-      var table = try loadTable()
-      let didPrune = pruneExpiredEntries(&table)
-      guard let stored = table.removeValue(forKey: requestId) else {
-        if didPrune {
-          try persist(table)
-        }
+      let fileURL = try actionURL(requestId: requestId)
+      guard FileManager.default.fileExists(atPath: fileURL.path) else {
         return nil
       }
-      try persist(table)
+      let stored = try decoder.decode(StoredAction.self, from: Data(contentsOf: fileURL))
+      try FileManager.default.removeItem(at: fileURL)
       return ActionPayload(executable: stored.executable, arguments: stored.arguments)
     }
   }
 
   func remove(requestId: String) throws {
     try queue.sync {
-      var table = try loadTable()
-      let didPrune = pruneExpiredEntries(&table)
-      let removed = table.removeValue(forKey: requestId) != nil
-      if didPrune || removed {
-        try persist(table)
+      let fileURL = try actionURL(requestId: requestId)
+      if FileManager.default.fileExists(atPath: fileURL.path) {
+        try FileManager.default.removeItem(at: fileURL)
       }
     }
   }
 
-  private func loadTable() throws -> [String: StoredAction] {
-    if !FileManager.default.fileExists(atPath: fileURL.path) {
-      return [:]
+  func pruneExpired() throws {
+    try queue.sync {
+      guard FileManager.default.fileExists(atPath: directoryURL.path) else {
+        return
+      }
+      let threshold = Date().addingTimeInterval(-Self.actionRetentionInterval)
+      let files = try FileManager.default.contentsOfDirectory(
+        at: directoryURL,
+        includingPropertiesForKeys: [.contentModificationDateKey],
+        options: [.skipsHiddenFiles]
+      )
+      for fileURL in files where fileURL.pathExtension == "json" {
+        let modificationDate = try fileURL.resourceValues(forKeys: [.contentModificationDateKey])
+          .contentModificationDate
+        if let modificationDate, modificationDate < threshold {
+          try FileManager.default.removeItem(at: fileURL)
+        }
+      }
     }
-    let data = try Data(contentsOf: fileURL)
-    if data.isEmpty {
-      return [:]
-    }
-    return try decoder.decode([String: StoredAction].self, from: data)
-  }
-
-  private func persist(_ table: [String: StoredAction]) throws {
-    let directory = fileURL.deletingLastPathComponent()
-    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    let data = try encoder.encode(table)
-    try data.write(to: fileURL, options: .atomic)
   }
 
   private func iso8601Now() -> String {
-    Self.timestampFormatter.string(from: Date())
+    timestampFormatter.string(from: Date())
   }
 
-  private func pruneExpiredEntries(_ table: inout [String: StoredAction]) -> Bool {
-    let threshold = Date().addingTimeInterval(-Self.actionRetentionInterval)
-    let originalCount = table.count
-
-    table = table.filter { _, storedAction in
-      guard let createdAt = Self.timestampFormatter.date(from: storedAction.createdAt) else {
-        return false
-      }
-      return createdAt >= threshold
+  private func actionURL(requestId: String) throws -> URL {
+    guard let uuid = UUID(uuidString: requestId) else {
+      throw ActionStoreError.invalidRequestId(requestId)
     }
-
-    return table.count != originalCount
+    return directoryURL.appendingPathComponent("\(uuid.uuidString.lowercased()).json", isDirectory: false)
   }
 }
 
@@ -105,6 +114,8 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   private let center = UNUserNotificationCenter.current()
   private let socketPath: String
   private let actionStore: ActionStore
+  private let logURL: URL
+  private let logQueue = DispatchQueue(label: "com.yuki-yano.vde-notifier-app.agent-log")
   private var serverFD: Int32 = -1
   private var lockFD: Int32 = -1
   private let serverQueue = DispatchQueue(label: "com.yuki-yano.vde-notifier-app.agent-server")
@@ -116,15 +127,17 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   private static let categoryIdentifier = "com.yuki-yano.vde-notifier-app.focus"
   private static let actionIdentifier = "focus-return"
 
-  init(socketPath: String, actionStoreURL: URL) {
+  init(socketPath: String, actionStoreURL: URL, logURL: URL) {
     self.socketPath = socketPath
-    actionStore = ActionStore(fileURL: actionStoreURL)
+    actionStore = ActionStore(directoryURL: actionStoreURL)
+    self.logURL = logURL
     super.init()
   }
 
   func start() throws {
     center.delegate = self
     registerNotificationCategory()
+    try actionStore.pruneExpired()
     lockFD = try acquireAgentLock(path: "\(socketPath).lock")
     do {
       if FileManager.default.fileExists(atPath: socketPath) {
@@ -199,7 +212,8 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
       let responseData = try encodeAgentResponse(response)
       try writeFrame(responseData, to: clientFD)
     } catch {
-      let failure = AgentResponse.failure(code: "bad_request", message: String(describing: error))
+      let code = error is WireCodecError ? "invalid_protocol" : "bad_request"
+      let failure = AgentResponse.failure(code: code, message: String(describing: error))
       do {
         let responseData = try encodeAgentResponse(failure)
         try writeFrame(responseData, to: clientFD)
@@ -314,13 +328,49 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   }
 
   private func runAction(requestId: String) {
-    guard let action = try? actionStore.take(requestId: requestId) else {
+    do {
+      guard let action = try actionStore.take(requestId: requestId) else {
+        return
+      }
+      let attributes = try FileManager.default.attributesOfItem(atPath: action.executable)
+      guard attributes[.type] as? FileAttributeType == .typeRegular,
+            FileManager.default.isExecutableFile(atPath: action.executable)
+      else {
+        throw CocoaError(.fileNoSuchFile)
+      }
+      let process = Process()
+      process.executableURL = URL(fileURLWithPath: action.executable)
+      process.arguments = action.arguments
+      try process.run()
+    } catch {
+      appendAgentLog(event: "action_failed", requestId: requestId, error: error)
+    }
+  }
+
+  private func appendAgentLog(event: String, requestId: String, error: Error) {
+    let entry: [String: String] = [
+      "timestamp": ISO8601DateFormatter().string(from: Date()),
+      "event": event,
+      "request_id": requestId,
+      "error": String(describing: error),
+    ]
+    guard let data = try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys]) else {
       return
     }
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: action.executable)
-    process.arguments = action.arguments
-    try? process.run()
+    logQueue.sync {
+      do {
+        try FileManager.default.createDirectory(at: logURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if !FileManager.default.fileExists(atPath: logURL.path) {
+          _ = FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        }
+        let handle = try FileHandle(forWritingTo: logURL)
+        try handle.seekToEnd()
+        try handle.write(contentsOf: data + Data([0x0A]))
+        try handle.close()
+      } catch {
+        // Logging must not terminate the notification agent.
+      }
+    }
   }
 
   func userNotificationCenter(
