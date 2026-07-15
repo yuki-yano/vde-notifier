@@ -8,6 +8,7 @@ describe("focus command payload", () => {
       tmuxBin: "/opt/homebrew/bin/tmux",
       socketPath: "/tmp/tmux-501/default",
       clientTTY: "/dev/ttys012",
+      sessionId: "$1",
       sessionName: "dev",
       windowId: "@1",
       windowIndex: 1,

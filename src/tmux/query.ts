@@ -4,6 +4,7 @@ import type { TmuxContext } from "../types";
 const FORMAT_SEQUENCE = [
   "#{socket_path}",
   "#{client_tty}",
+  "#{session_id}",
   "#{session_name}",
   "#{window_id}",
   "#{window_index}",
@@ -45,12 +46,14 @@ export const resolveTmuxContext = async (tmuxPath: string): Promise<TmuxContext>
     throw new Error("Unexpected tmux response while collecting pane metadata");
   }
 
-  const [socketPath, clientTTY, sessionName, windowId, windowIndex, paneId, paneIndex, paneCurrentCommand] = lines;
+  const [socketPath, clientTTY, sessionId, sessionName, windowId, windowIndex, paneId, paneIndex, paneCurrentCommand] =
+    lines;
 
   return {
     tmuxBin: tmuxPath,
     socketPath,
     clientTTY,
+    sessionId,
     sessionName,
     windowId,
     windowIndex: parseNumber(windowIndex, "window index"),

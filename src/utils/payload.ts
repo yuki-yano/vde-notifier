@@ -31,6 +31,7 @@ const tmuxSchema = z.object({
   tmuxBin: z.string(),
   socketPath: z.string(),
   clientTTY: z.string(),
+  sessionId: z.string(),
   sessionName: z.string(),
   windowId: z.string(),
   windowIndex: z.number(),

@@ -9,7 +9,7 @@ export const focusPane = async (context: TmuxContext): Promise<void> => {
     "switch-client",
     ...(context.clientTTY.length > 0 ? ["-c", context.clientTTY] : []),
     "-t",
-    context.sessionName
+    context.sessionId
   ];
 
   await execa(context.tmuxBin, switchArgs);

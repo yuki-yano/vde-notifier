@@ -27,12 +27,13 @@ describe("resolveTmuxContext", () => {
 
   it("parses tmux display output into structured context", async () => {
     process.env.TMUX_PANE = "%5";
-    const stdout = ["/tmp/tmux-501/default", "/dev/ttys005", "dev", "@4", "2", "%17", "1", "node"].join("\n");
+    const stdout = ["/tmp/tmux-501/default", "/dev/ttys005", "$1", "dev", "@4", "2", "%17", "1", "node"].join("\n");
     execaMock.mockResolvedValue({ stdout } as unknown as Awaited<ReturnType<typeof execa>>);
 
     const context = await resolveTmuxContext("/opt/homebrew/bin/tmux");
 
     expect(context.sessionName).toBe("dev");
+    expect(context.sessionId).toBe("$1");
     expect(context.windowIndex).toBe(2);
     expect(context.paneIndex).toBe(1);
     expect(context.tmuxBin).toBe("/opt/homebrew/bin/tmux");
@@ -42,7 +43,7 @@ describe("resolveTmuxContext", () => {
       "-p",
       "-t",
       "%5",
-      "#{socket_path}\n#{client_tty}\n#{session_name}\n#{window_id}\n#{window_index}\n#{pane_id}\n#{pane_index}\n#{pane_current_command}"
+      "#{socket_path}\n#{client_tty}\n#{session_id}\n#{session_name}\n#{window_id}\n#{window_index}\n#{pane_id}\n#{pane_index}\n#{pane_current_command}"
     ]);
   });
 
@@ -56,7 +57,9 @@ describe("resolveTmuxContext", () => {
 
   it("throws when numeric fields cannot be parsed", async () => {
     delete process.env.TMUX_PANE;
-    const stdout = ["/tmp/tmux-501/default", "/dev/ttys005", "dev", "@4", "NaN", "%17", "oops", "node"].join("\n");
+    const stdout = ["/tmp/tmux-501/default", "/dev/ttys005", "$1", "dev", "@4", "NaN", "%17", "oops", "node"].join(
+      "\n"
+    );
     execaMock.mockResolvedValue({ stdout } as unknown as Awaited<ReturnType<typeof execa>>);
 
     await expect(resolveTmuxContext("tmux")).rejects.toThrow("Failed to parse window index as number");
@@ -64,7 +67,7 @@ describe("resolveTmuxContext", () => {
 
   it("throws when numeric fields include non-digit suffixes", async () => {
     delete process.env.TMUX_PANE;
-    const stdout = ["/tmp/tmux-501/default", "/dev/ttys005", "dev", "@4", "2abc", "%17", "1", "node"].join("\n");
+    const stdout = ["/tmp/tmux-501/default", "/dev/ttys005", "$1", "dev", "@4", "2abc", "%17", "1", "node"].join("\n");
     execaMock.mockResolvedValue({ stdout } as unknown as Awaited<ReturnType<typeof execa>>);
 
     await expect(resolveTmuxContext("tmux")).rejects.toThrow("Failed to parse window index as number");
@@ -72,7 +75,7 @@ describe("resolveTmuxContext", () => {
 
   it("keeps empty pane command instead of rejecting output shape", async () => {
     delete process.env.TMUX_PANE;
-    const stdout = ["/tmp/tmux-501/default", "/dev/ttys005", "dev", "@4", "2", "%17", "1", ""].join("\n");
+    const stdout = ["/tmp/tmux-501/default", "/dev/ttys005", "$1", "dev", "@4", "2", "%17", "1", ""].join("\n");
     execaMock.mockResolvedValue({ stdout } as unknown as Awaited<ReturnType<typeof execa>>);
 
     const context = await resolveTmuxContext("/opt/homebrew/bin/tmux");
@@ -81,7 +84,7 @@ describe("resolveTmuxContext", () => {
 
   it("omits target argument when TMUX_PANE is undefined", async () => {
     delete process.env.TMUX_PANE;
-    const stdout = ["/tmp/tmux-501/default", "/dev/ttys005", "dev", "@4", "2", "%17", "1", "node"].join("\n");
+    const stdout = ["/tmp/tmux-501/default", "/dev/ttys005", "$1", "dev", "@4", "2", "%17", "1", "node"].join("\n");
     execaMock.mockResolvedValue({ stdout } as unknown as Awaited<ReturnType<typeof execa>>);
 
     await resolveTmuxContext("/opt/homebrew/bin/tmux");
@@ -90,7 +93,7 @@ describe("resolveTmuxContext", () => {
     expect(args).toEqual([
       "display-message",
       "-p",
-      "#{socket_path}\n#{client_tty}\n#{session_name}\n#{window_id}\n#{window_index}\n#{pane_id}\n#{pane_index}\n#{pane_current_command}"
+      "#{socket_path}\n#{client_tty}\n#{session_id}\n#{session_name}\n#{window_id}\n#{window_index}\n#{pane_id}\n#{pane_index}\n#{pane_current_command}"
     ]);
   });
 });

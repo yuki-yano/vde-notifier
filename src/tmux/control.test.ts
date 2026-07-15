@@ -14,6 +14,7 @@ const context: TmuxContext = {
   tmuxBin: "/opt/homebrew/bin/tmux",
   socketPath: "/tmp/tmux-501/default",
   clientTTY: "/dev/ttys002",
+  sessionId: "$1",
   sessionName: "dev",
   windowId: "@2",
   windowIndex: 2,
@@ -34,7 +35,7 @@ describe("focusPane", () => {
     expect(execaMock).toHaveBeenCalledTimes(3);
     expect(execaMock.mock.calls[0]).toEqual([
       context.tmuxBin,
-      ["-S", context.socketPath, "switch-client", "-c", context.clientTTY, "-t", context.sessionName]
+      ["-S", context.socketPath, "switch-client", "-c", context.clientTTY, "-t", context.sessionId]
     ]);
     expect(execaMock.mock.calls[1]).toEqual([
       context.tmuxBin,

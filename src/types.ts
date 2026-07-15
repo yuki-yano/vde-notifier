@@ -42,6 +42,7 @@ export type TmuxContext = {
   readonly tmuxBin: string;
   readonly socketPath: string;
   readonly clientTTY: string;
+  readonly sessionId: string;
   readonly sessionName: string;
   readonly windowId: string;
   readonly windowIndex: number;
