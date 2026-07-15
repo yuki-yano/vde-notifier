@@ -370,6 +370,7 @@ const runNotify = async (
       options.verbose,
       options.logFile
     );
+    await runForwardCommand(options, rawArgs, agentContext);
     return 0;
   }
 

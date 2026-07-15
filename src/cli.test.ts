@@ -164,6 +164,27 @@ describe("runNotify", () => {
     spy.mockRestore();
   });
 
+  it("forwards an explicit command during dry-run", async () => {
+    const options: CliOptions = {
+      mode: "notify",
+      dryRun: true,
+      verbose: false,
+      codex: false,
+      notifier: "terminal-notifier"
+    } as CliOptions;
+
+    const result = await __internal.runNotify(options, environmentReport, [
+      "--dry-run",
+      "--",
+      "other-command",
+      "--check"
+    ]);
+
+    expect(result).toBe(0);
+    expect(sendNotificationMock).not.toHaveBeenCalled();
+    expect(execaMock).toHaveBeenCalledWith("other-command", ["--check"], { stdio: "inherit" });
+  });
+
   it("honors VDE_NOTIFIER_TERMINAL override", async () => {
     process.env.VDE_NOTIFIER_TERMINAL = "ghostty";
     const options: CliOptions = {
