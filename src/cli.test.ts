@@ -47,6 +47,7 @@ const parseFocusPayloadMock = vi.mocked(await import("./utils/payload")).parseFo
 const focusPaneMock = vi.mocked(await import("./tmux/control")).focusPane;
 const execaMock = vi.mocked(await import("execa")).execa;
 const runtimeMocks = await import("./utils/runtime");
+const assertRuntimeSupportMock = vi.mocked(runtimeMocks.assertRuntimeSupport);
 const verifyRequiredBinariesMock = vi.mocked(runtimeMocks.verifyRequiredBinaries);
 const verifyTmuxBinaryMock = vi.mocked(runtimeMocks.verifyTmuxBinary);
 
@@ -672,6 +673,53 @@ describe("main", () => {
     expect(verifyTmuxBinaryMock).toHaveBeenCalledTimes(1);
     expect(verifyRequiredBinariesMock).not.toHaveBeenCalled();
     expect(sendNotificationMock).not.toHaveBeenCalled();
+  });
+
+  it("prints help without checking the runtime", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await withArgv(["--help"], async () => {
+      expect(await main()).toBe(0);
+    });
+
+    expect(logSpy).toHaveBeenCalledWith(expect.stringMatching(/^Usage: \S+ \[options\]/u));
+    expect(assertRuntimeSupportMock).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it("prints the package version without checking the runtime", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+
+    await withArgv(["--version"], async () => {
+      expect(await main()).toBe(0);
+    });
+
+    expect(logSpy).toHaveBeenCalledWith("0.1.10");
+    expect(assertRuntimeSupportMock).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it("dispatches focus mode through the focus use case", async () => {
+    await withArgv(["--mode", "focus", "--payload", focusCommand.payload], async () => {
+      expect(await main()).toBe(0);
+    });
+
+    expect(assertRuntimeSupportMock).toHaveBeenCalledTimes(1);
+    expect(focusPaneMock).toHaveBeenCalledWith(sampleTmux);
+    expect(activateTerminalMock).toHaveBeenCalledWith(sampleTerminal.bundleId);
+  });
+
+  it("returns a failure and usage for invalid options", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    await withArgv(["--unknown"], async () => {
+      expect(await main()).toBe(1);
+    });
+
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Failed to parse CLI options:"));
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringMatching(/^Usage: \S+ \[options\]/u));
+    expect(assertRuntimeSupportMock).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
   });
 });
 
