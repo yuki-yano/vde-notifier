@@ -332,8 +332,9 @@ final class NotificationAgentRuntime: NSObject, UNUserNotificationCenterDelegate
   }
 
   func run() -> Never {
-    RunLoop.main.run()
-    fatalError("Unreachable")
+    while true {
+      RunLoop.main.run()
+    }
   }
 
   private func acceptLoop() {

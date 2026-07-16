@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 
 public enum AgentPayloadError: Error, Equatable, CustomStringConvertible {
@@ -56,8 +57,10 @@ public func extractAgentMessage(_ payload: [String: Any]) -> String? {
 public func resolveAgentSound(_ payload: [String: Any], environment: [String: String]) -> String? {
   let raw = payload.keys.contains("sound") ? payload["sound"] : environment["CODEX_NOTIFICATION_SOUND"]
   guard let raw, !(raw is NSNull) else { return nil }
-  if let value = raw as? Bool { return value ? "Glass" : "None" }
-  if let value = raw as? NSNumber { return value.intValue == 0 ? "None" : nil }
+  if let value = raw as? NSNumber {
+    if CFGetTypeID(value) == CFBooleanGetTypeID() { return value.boolValue ? "Glass" : "None" }
+    return value.doubleValue == 0 ? "None" : nil
+  }
   guard let value = nonEmptyString(raw) else { return nil }
   switch value.lowercased() {
   case "none", "false": return "None"
@@ -84,12 +87,15 @@ public func extractCodexThreadIdentifier(_ payload: [String: Any]) -> String? {
   for key in ["thread-id", "thread_id", "threadId"] {
     guard let value = nonEmptyString(payload[key]) else { continue }
     let range = NSRange(value.startIndex..<value.endIndex, in: value)
-    if codexThreadIdentifierRegex.firstMatch(in: value, range: range) != nil { return value }
+    if codexThreadIdentifierRegex?.firstMatch(in: value, range: range) != nil { return value }
   }
   return nil
 }
 
-private let codexThreadIdentifierRegex = try! NSRegularExpression(pattern: "^[0-9a-f-]{16,128}$", options: [.caseInsensitive])
+private let codexThreadIdentifierRegex = try? NSRegularExpression(
+  pattern: "^[0-9a-f-]{16,128}$",
+  options: [.caseInsensitive]
+)
 
 public func parseCodexPayload(
   _ source: String,

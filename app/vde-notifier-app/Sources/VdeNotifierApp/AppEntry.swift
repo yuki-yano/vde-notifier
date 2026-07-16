@@ -31,7 +31,15 @@ struct VdeNotifierAppMain {
       let processArguments = ProcessInfo.processInfo.arguments
       let arguments = Array(processArguments.dropFirst())
       if URL(fileURLWithPath: processArguments[0]).lastPathComponent == "vde-notifier" {
-        exit(try NotifierCLI.run(arguments: arguments))
+        do {
+          exit(try NotifierCLI.run(arguments: arguments))
+        } catch {
+          fputs("vde-notifier: \(error)\n", stderr)
+          if error is NotifierCLIError {
+            fputs("\n\(notifierCLIUsage())\n", stderr)
+          }
+          exit(1)
+        }
       }
       let command: ParsedCommand = if arguments.isEmpty && Bundle.main.bundleURL.pathExtension == "app" {
         .agentRun

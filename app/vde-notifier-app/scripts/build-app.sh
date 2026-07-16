@@ -47,6 +47,7 @@ UNIVERSAL_BINARY="${UNIVERSAL_DIR}/vde-notifier-app"
 mkdir -p "${UNIVERSAL_DIR}"
 xcrun lipo -create "${BINARY_PATHS[@]}" -output "${UNIVERSAL_BINARY}"
 xcrun lipo "${UNIVERSAL_BINARY}" -verify_arch arm64 x86_64
+codesign --force --sign - --timestamp=none --identifier "${BUNDLE_IDENTIFIER}" "${UNIVERSAL_BINARY}"
 
 APP_DIR="${BUILD_DIR}/VdeNotifierApp.app"
 CONTENTS_DIR="${APP_DIR}/Contents"
@@ -58,7 +59,8 @@ mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
 cp "${UNIVERSAL_BINARY}" "${MACOS_DIR}/vde-notifier-app"
 chmod +x "${MACOS_DIR}/vde-notifier-app"
-ln -s "vde-notifier-app" "${MACOS_DIR}/vde-notifier"
+cp "${UNIVERSAL_BINARY}" "${MACOS_DIR}/vde-notifier"
+chmod +x "${MACOS_DIR}/vde-notifier"
 
 # Copy app icon
 ICON_SRC="${PROJECT_DIR}/Resources/AppIcon.icns"
@@ -99,7 +101,6 @@ cat > "${CONTENTS_DIR}/Info.plist" <<PLIST
 </plist>
 PLIST
 
-codesign --force --sign - --timestamp=none --identifier "${BUNDLE_IDENTIFIER}" "${MACOS_DIR}/vde-notifier-app"
 codesign --force --deep --sign - --timestamp=none --identifier "${BUNDLE_IDENTIFIER}" "${APP_DIR}"
 
 plutil -lint "${CONTENTS_DIR}/Info.plist"

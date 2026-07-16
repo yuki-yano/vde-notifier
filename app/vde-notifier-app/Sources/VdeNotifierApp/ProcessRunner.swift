@@ -32,6 +32,7 @@ enum ProcessRunner {
     let directory = FileManager.default.temporaryDirectory
       .appendingPathComponent("vde-notifier-process-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
     defer { try? FileManager.default.removeItem(at: directory) }
 
     let stdoutURL = directory.appendingPathComponent("stdout")

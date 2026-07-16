@@ -94,6 +94,7 @@ final class AgentPayloadTests: XCTestCase {
     XCTAssertEqual(resolveAgentSound(["sound": true], environment: [:]), "Glass")
     XCTAssertEqual(resolveAgentSound(["sound": false], environment: [:]), "None")
     XCTAssertEqual(resolveAgentSound(["sound": 0], environment: [:]), "None")
+    XCTAssertNil(resolveAgentSound(["sound": 1], environment: [:]))
     XCTAssertEqual(resolveAgentSound(["sound": "/System/Library/Sounds/Ping.aiff"], environment: [:]), "Ping")
     XCTAssertEqual(resolveAgentSound([:], environment: ["CODEX_NOTIFICATION_SOUND": "default"]), "Glass")
   }
