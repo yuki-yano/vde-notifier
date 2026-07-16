@@ -230,9 +230,10 @@ func runStoredAction(actionStore: ActionStore, requestId: String, logger: AgentL
     guard let action = try actionStore.take(requestId: requestId) else {
       return
     }
-    let attributes = try FileManager.default.attributesOfItem(atPath: action.executable)
+    let executableURL = URL(fileURLWithPath: action.executable).resolvingSymlinksInPath()
+    let attributes = try FileManager.default.attributesOfItem(atPath: executableURL.path)
     guard attributes[.type] as? FileAttributeType == .typeRegular,
-          FileManager.default.isExecutableFile(atPath: action.executable)
+          FileManager.default.isExecutableFile(atPath: executableURL.path)
     else {
       throw CocoaError(.fileNoSuchFile)
     }

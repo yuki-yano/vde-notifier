@@ -49,7 +49,12 @@ enum NotifierCLI {
     let notification = notificationDetails(tmux: tmux, options: options, context: context)
     let payload = FocusPayload(tmux: tmux, terminal: terminal)
     let encodedPayload = try encodeFocusPayload(payload)
-    let actionExecutable = currentInvocationPath()
+    guard let actionExecutable = resolveCurrentExecutablePath() else {
+      throw ProcessRunnerError.launch(
+        executable: ProcessInfo.processInfo.arguments[0],
+        message: "Unable to resolve current executable path"
+      )
+    }
     var actionArguments = ["--mode", "focus", "--payload", encodedPayload]
     if options.verbose { actionArguments.append("--verbose") }
     if let logFile = options.logFile { actionArguments += ["--log-file", logFile] }
@@ -185,12 +190,6 @@ func sendAgentNotification(
       message: response.message ?? "unknown error"
     )
   }
-}
-
-private func currentInvocationPath() -> String {
-  let raw = ProcessInfo.processInfo.arguments[0]
-  if raw.hasPrefix("/") { return URL(fileURLWithPath: raw).standardizedFileURL.path }
-  return URL(fileURLWithPath: FileManager.default.currentDirectoryPath).appendingPathComponent(raw).standardizedFileURL.path
 }
 
 private func jsonObject<T: Encodable>(_ value: T) -> Any {

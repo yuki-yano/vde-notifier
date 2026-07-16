@@ -125,6 +125,36 @@ final class ActionStoreTests: XCTestCase {
     XCTAssertFalse(try XCTUnwrap(entry["error"]).isEmpty)
   }
 
+  func testStoredActionExecutesThroughSymbolicLink() throws {
+    let directory = makeTemporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let actionsDirectory = directory.appendingPathComponent("actions", isDirectory: true)
+    let logURL = directory.appendingPathComponent("agent.log", isDirectory: false)
+    let outputURL = directory.appendingPathComponent("clicked", isDirectory: false)
+    let executableURL = directory.appendingPathComponent("vde-notifier-real", isDirectory: false)
+    let symlinkURL = directory.appendingPathComponent("vde-notifier", isDirectory: false)
+    try Data("#!/bin/sh\nprintf clicked > \"$1\"\n".utf8).write(to: executableURL)
+    XCTAssertEqual(chmod(executableURL.path, 0o700), 0)
+    try FileManager.default.createSymbolicLink(at: symlinkURL, withDestinationURL: executableURL)
+
+    let store = ActionStore(directoryURL: actionsDirectory)
+    let requestId = UUID().uuidString.lowercased()
+    try store.save(
+      requestId: requestId,
+      action: ActionPayload(executable: symlinkURL.path, arguments: [outputURL.path])
+    )
+
+    runStoredAction(actionStore: store, requestId: requestId, logger: AgentLogger(logURL: logURL))
+
+    let deadline = Date().addingTimeInterval(2)
+    while !FileManager.default.fileExists(atPath: outputURL.path), Date() < deadline {
+      Thread.sleep(forTimeInterval: 0.02)
+    }
+    XCTAssertEqual(try String(contentsOf: outputURL, encoding: .utf8), "clicked")
+    XCTAssertFalse(FileManager.default.fileExists(atPath: logURL.path))
+  }
+
   private func makeTemporaryDirectory() -> URL {
     FileManager.default.temporaryDirectory
       .appendingPathComponent("vde-notifier-app-action-store-tests", isDirectory: true)

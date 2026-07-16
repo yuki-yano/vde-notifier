@@ -53,6 +53,31 @@ struct AgentClient {
   }
 }
 
+func resolveExecutableFilePath(_ path: String) -> String? {
+  let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().path
+  guard FileManager.default.isExecutableFile(atPath: resolved) else {
+    return nil
+  }
+  return resolved
+}
+
+func resolveCurrentExecutablePath() -> String? {
+  var size: UInt32 = 0
+  _NSGetExecutablePath(nil, &size)
+  guard size > 0 else {
+    return nil
+  }
+
+  var buffer = [CChar](repeating: 0, count: Int(size))
+  guard _NSGetExecutablePath(&buffer, &size) == 0 else {
+    return nil
+  }
+
+  let nullIndex = buffer.firstIndex(of: 0) ?? buffer.count
+  let bytes = buffer[0..<nullIndex].map { UInt8(bitPattern: $0) }
+  return resolveExecutableFilePath(String(decoding: bytes, as: UTF8.self))
+}
+
 enum AgentBootstrap {
   static func ensureRunning(socketPath: String, timeout: TimeInterval = 3.0) throws {
     if isRunning(socketPath: socketPath) {
@@ -118,28 +143,5 @@ enum AgentBootstrap {
       return nil
     }
     return URL(fileURLWithPath: appPath)
-  }
-
-  private static func resolveCurrentExecutablePath() -> String? {
-    var size: UInt32 = 0
-    _NSGetExecutablePath(nil, &size)
-    guard size > 0 else {
-      return nil
-    }
-
-    var buffer = [CChar](repeating: 0, count: Int(size))
-    guard _NSGetExecutablePath(&buffer, &size) == 0 else {
-      return nil
-    }
-
-    let nullIndex = buffer.firstIndex(of: 0) ?? buffer.count
-    let bytes = buffer[0..<nullIndex].map { UInt8(bitPattern: $0) }
-    let rawPath = String(decoding: bytes, as: UTF8.self)
-    let resolved = URL(fileURLWithPath: rawPath).resolvingSymlinksInPath().path
-    if FileManager.default.isExecutableFile(atPath: resolved) {
-      return resolved
-    }
-
-    return nil
   }
 }

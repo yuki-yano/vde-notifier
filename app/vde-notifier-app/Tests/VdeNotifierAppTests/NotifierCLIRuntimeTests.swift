@@ -121,6 +121,25 @@ final class AgentContextLoaderTests: XCTestCase {
 }
 
 final class NotifierCLIIntegrationTests: XCTestCase {
+  func testInvocationPathResolvesHomebrewStyleSymbolicLink() throws {
+    let directory = temporaryDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let executable = directory.appendingPathComponent("VdeNotifierApp.app/Contents/MacOS/vde-notifier")
+    try FileManager.default.createDirectory(at: executable.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data().write(to: executable)
+    XCTAssertEqual(chmod(executable.path, 0o700), 0)
+    let binDirectory = directory.appendingPathComponent("bin", isDirectory: true)
+    try FileManager.default.createDirectory(at: binDirectory, withIntermediateDirectories: true)
+    let symlink = binDirectory.appendingPathComponent("vde-notifier")
+    try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: executable)
+
+    XCTAssertEqual(
+      resolveExecutableFilePath(symlink.path),
+      executable.path
+    )
+  }
+
   func testHelpAndVersionDoNotRequireTmux() throws {
     XCTAssertEqual(try NotifierCLI.run(arguments: ["--help"], environment: [:]), 0)
     XCTAssertEqual(try NotifierCLI.run(arguments: ["--version"], environment: [:]), 0)
