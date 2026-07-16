@@ -118,26 +118,26 @@ VdeNotifierApp.app
 
 ### 機能完了条件
 
-- [ ] `vde-notifier` の既存 CLI 契約のうち互換対象に列挙した全項目が Swift で動作する
-- [ ] 通知送信と通知クリック後の tmux pane 復帰が Node.js、Bun、npm パッケージなしで完結する
-- [ ] app bundle と Homebrew Cask が `vde-notifier` と `vde-notifier-app` の両方を提供する
-- [ ] terminal-notifier、swiftDialog、Node CLI のフォールバック経路が残っていない
+- [x] `vde-notifier` の既存 CLI 契約のうち互換対象に列挙した全項目が Swift で動作する
+- [x] 通知送信と通知クリック後の tmux pane 復帰が Node.js、Bun、npm パッケージなしで完結する
+- [x] app bundle と Homebrew Cask が `vde-notifier` と `vde-notifier-app` の両方を提供する
+- [x] terminal-notifier、swiftDialog、Node CLI のフォールバック経路が残っていない
 
 ### テスト完了条件
 
-- [ ] `swift test` が成功する
-- [ ] strict concurrency と warnings-as-errors を有効にした `swift test` が成功する
-- [ ] CLI、Codex、Claude、tmux、focus payload、terminal profile、後続コマンドの正常系・異常系テストが成功する
-- [ ] universal app bundle の plist、署名、arm64/x86_64、help、version、doctor smoke test が成功する
-- [ ] セルフレビューで重大・高優先度の未解決指摘がゼロである
+- [x] `swift test` が成功する
+- [x] strict concurrency と warnings-as-errors を有効にした `swift test` が成功する
+- [x] CLI、Codex、Claude、tmux、focus payload、terminal profile、後続コマンドの正常系・異常系テストが成功する
+- [x] universal app bundle の plist、署名、arm64/x86_64、help、version、doctor smoke test が成功する
+- [x] セルフレビューで重大・高優先度の未解決指摘がゼロである
 
 ### 運用反映条件
 
-- [ ] Node/npm 用のソース、設定、lockfile、publish workflow がリポジトリから削除されている
-- [ ] CI と release workflow が Swift 単一構成を検証する
-- [ ] README が Homebrew によるインストールと単一 release flow だけを案内する
-- [ ] Homebrew tap が同一 app bundle から二つの CLI をインストールする
-- [ ] 各移行段階が意図別のコミットとして記録されている
+- [x] Node/npm 用のソース、設定、lockfile、publish workflow がリポジトリから削除されている
+- [x] CI と release workflow が Swift 単一構成を検証する
+- [x] README が Homebrew によるインストールと単一 release flow だけを案内する
+- [x] Homebrew tap が同一 app bundle から二つの CLI をインストールする
+- [x] 各移行段階が意図別のコミットとして記録されている
 
 ## 計画セルフレビュー
 
@@ -149,3 +149,17 @@ VdeNotifierApp.app
 - ロールバック: Git 履歴を破壊せずに戻せる
 
 セルフレビュー上の未解決事項はない。実装中に既存契約の解釈差が見つかった場合は、TypeScript テストの期待値を正とし、Swift テストを先に追加してから実装する。
+
+## 完了時の検証記録
+
+- XCTest: 71 tests、失敗 0
+- コンパイラ条件: `-strict-concurrency=complete`、`-warnings-as-errors`
+- app bundle: plist、ad-hoc code signature、`arm64` / `x86_64`、二つの実行ファイルを検証
+- GitHub CI: run `29472697279` 成功
+- GitHub Release: `app-v0.2.0`、`VdeNotifierApp.app.tar.gz` 公開成功
+- Release workflow: run `29472749388` 成功
+- Homebrew Cask: version `0.2.0`、二つの binary artifact を確認
+- Homebrew audit: ローカルおよび run `29472835505` 成功
+- 実インストール: `brew reinstall --cask yuki-yano/vde-notifier/vde-notifier-app` で 0.2.0 を導入
+
+Developer ID で署名・公証していないアプリが `/Applications` 配下で Gatekeeper に拒否される既知の制約は、本移行とは独立した運用制約として残る。quarantine 除去後も対象 macOS では `spctl` が拒否することを確認した。これはユーザー了承のうえで本計画の非目標として扱い、Swift CLI 自体は同じ配布バイナリを `/Applications` 外で起動して確認した。
