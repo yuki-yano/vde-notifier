@@ -28,7 +28,11 @@ struct VdeNotifierAppMain {
 
   static func main() {
     do {
-      let arguments = Array(ProcessInfo.processInfo.arguments.dropFirst())
+      let processArguments = ProcessInfo.processInfo.arguments
+      let arguments = Array(processArguments.dropFirst())
+      if URL(fileURLWithPath: processArguments[0]).lastPathComponent == "vde-notifier" {
+        exit(try NotifierCLI.run(arguments: arguments))
+      }
       let command: ParsedCommand = if arguments.isEmpty && Bundle.main.bundleURL.pathExtension == "app" {
         .agentRun
       } else {
@@ -60,31 +64,12 @@ struct VdeNotifierAppMain {
   }
 
   private static func runNotify(_ command: NotifyCommand) throws {
-    let socketPath = AppPaths.socketURL().path
-    try AgentBootstrap.ensureRunning(socketPath: socketPath)
-
-    let request = NotifyRequest(
-      requestId: UUID().uuidString.lowercased(),
+    try sendAgentNotification(
       title: command.title,
       message: command.message,
       sound: command.sound,
-      action: ActionPayload(
-        executable: command.actionExecutable,
-        arguments: command.actionArguments
-      ),
-      source: "vde-notifier"
-    )
-
-    let client = AgentClient(socketPath: socketPath)
-    let response = try client.send(request)
-
-    if response.ok {
-      return
-    }
-
-    throw ClientError.notificationFailed(
-      code: response.code ?? "unknown",
-      message: response.message ?? "unknown error"
+      actionExecutable: command.actionExecutable,
+      actionArguments: command.actionArguments
     )
   }
 
@@ -192,18 +177,6 @@ struct VdeNotifierAppMain {
   }
 
   private static func printVersion() {
-    print(resolveVersion())
-  }
-
-  private static func resolveVersion() -> String {
-    let bundleVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-    if let bundleVersion, !bundleVersion.isEmpty {
-      return bundleVersion
-    }
-    let buildVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
-    if let buildVersion, !buildVersion.isEmpty {
-      return buildVersion
-    }
-    return "0.0.0"
+    print(resolveApplicationVersion())
   }
 }
