@@ -58,6 +58,7 @@ mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 
 cp "${UNIVERSAL_BINARY}" "${MACOS_DIR}/vde-notifier-app"
 chmod +x "${MACOS_DIR}/vde-notifier-app"
+ln -s "vde-notifier-app" "${MACOS_DIR}/vde-notifier"
 
 # Copy app icon
 ICON_SRC="${PROJECT_DIR}/Resources/AppIcon.icns"

@@ -1,12 +1,14 @@
 # vde-notifier-app
 
-`vde-notifier-app` is a Swift-based notification backend for `vde-notifier`.
+`VdeNotifierApp.app` contains the complete Swift implementation of `vde-notifier`.
 
 It provides:
 
 - Local macOS notifications
 - Notification click action (`Return to pane`)
 - Action execution using an absolute executable path and argument array
+- Codex and Claude payload parsing
+- tmux pane discovery and focus restoration
 
 ## Development
 
@@ -25,6 +27,7 @@ This creates:
 
 - `build/VdeNotifierApp.app`
 - A macOS 14+ universal executable with `arm64` and `x86_64` slices
+- `vde-notifier` and `vde-notifier-app` command entry points
 - An ad-hoc signed app bundle (`Identifier=com.yuki-yano.vde-notifier-app.agent`)
 
 If `doctor` stays `notDetermined` and the app does not appear in Notification settings, verify the signature identifier:
@@ -35,15 +38,22 @@ codesign -dv --verbose=4 build/VdeNotifierApp.app 2>&1 | rg '^Identifier='
 
 ## CLI
 
+The user-facing command is included in the same app bundle:
+
+```bash
+vde-notifier --title "Build finished" --message "Done" --sound Ping
+vde-notifier --codex '{"last-assistant-message":"Done"}'
+```
+
+The low-level app command remains available for agent diagnostics:
+
 ```bash
 vde-notifier-app notify \
   --title "Build finished" \
   --message "Done" \
   --sound Ping \
-  --action-exec /opt/homebrew/bin/node \
-  --action-arg /opt/homebrew/bin/vde-notifier \
-  --action-arg --mode \
-  --action-arg focus
+  --action-exec /usr/bin/say \
+  --action-arg clicked
 ```
 
 Agent commands:

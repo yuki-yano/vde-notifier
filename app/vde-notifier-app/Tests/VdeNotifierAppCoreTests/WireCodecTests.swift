@@ -9,7 +9,7 @@ final class WireCodecTests: XCTestCase {
       message: "Done",
       sound: "Ping",
       action: ActionPayload(
-        executable: "/usr/local/bin/node",
+        executable: "/usr/bin/say",
         arguments: ["/opt/homebrew/bin/vde-notifier", "--mode", "focus"]
       ),
       source: "vde-notifier"

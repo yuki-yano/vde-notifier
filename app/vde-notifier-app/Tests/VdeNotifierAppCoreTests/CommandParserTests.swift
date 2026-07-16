@@ -12,7 +12,7 @@ final class CommandParserTests: XCTestCase {
       "--sound",
       "Ping",
       "--action-exec",
-      "/usr/local/bin/node",
+      "/usr/bin/say",
       "--action-arg",
       "/opt/homebrew/bin/vde-notifier",
       "--action-arg",
@@ -29,7 +29,7 @@ final class CommandParserTests: XCTestCase {
     XCTAssertEqual(notify.title, "Build finished")
     XCTAssertEqual(notify.message, "webpack done")
     XCTAssertEqual(notify.sound, "Ping")
-    XCTAssertEqual(notify.actionExecutable, "/usr/local/bin/node")
+    XCTAssertEqual(notify.actionExecutable, "/usr/bin/say")
     XCTAssertEqual(notify.actionArguments, ["/opt/homebrew/bin/vde-notifier", "--mode", "focus"])
   }
 
