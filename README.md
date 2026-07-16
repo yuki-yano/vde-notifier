@@ -17,7 +17,6 @@ The `vde-notifier-app` bundle supports macOS 14 or later and contains both `arm6
 
 ```bash
 # install default notifier backend
-brew tap yuki-yano/vde-notifier
 brew install --cask yuki-yano/vde-notifier/vde-notifier-app
 # optional fallback notifier backends
 brew install terminal-notifier
@@ -85,7 +84,6 @@ When `--notifier vde-notifier-app` is selected, vde-notifier calls the local Swi
 1. Install the app:
 
 ```bash
-brew tap yuki-yano/vde-notifier
 brew install --cask yuki-yano/vde-notifier/vde-notifier-app
 ```
 
@@ -286,7 +284,7 @@ pnpm run swift:release-asset
 
 - **No sound**: Ensure the sound name matches a file in `/System/Library/Sounds/` and is not set to `None`.
 - **`vde-notifier-app` command is missing**: Install the default notifier backend:
-  `brew tap yuki-yano/vde-notifier && brew install --cask yuki-yano/vde-notifier/vde-notifier-app`
+  `brew install --cask yuki-yano/vde-notifier/vde-notifier-app`
 - **Notification click does nothing**: Run with `--verbose` to inspect payload and focus command. Confirm `osascript` automation permission is granted.
 - **`vde-notifier-app doctor` stays `notDetermined`**: Rebuild the app bundle (`pnpm run swift:app`) and verify the signature identifier (`codesign -dv --verbose=4 build/VdeNotifierApp.app 2>&1 | rg '^Identifier='`) is `com.yuki-yano.vde-notifier-app.agent`.
 - **Slow focus switch**: By default tmux commands run first, then the terminal is frontmost. If delays persist, check that Notification Center closes promptly and that tmux socket is reachable.
