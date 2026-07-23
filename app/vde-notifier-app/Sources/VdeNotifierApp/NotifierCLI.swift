@@ -34,20 +34,19 @@ enum NotifierCLI {
       return 0
     }
 
-    let tmuxBinary = try resolveExecutable("tmux", environment: environment)
-    let tmuxResult = try ProcessRunner.requireSuccess(
-      executable: tmuxBinary,
-      arguments: tmuxContextArguments(targetPane: environment["TMUX_PANE"])
-    )
-    let tmux = try parseTmuxContext(output: tmuxResult.standardOutput, tmuxBinary: tmuxBinary)
+    let herdr = try loadHerdrContext(environment: environment)
+    let tmux = try loadTmuxContext(environment: environment)
+    guard herdr != nil || tmux != nil else {
+      throw NotifierCLIError.invalidPayload("vde-notifier must run inside tmux or Herdr")
+    }
     let explicitTerminal = options.terminal ?? nonEmptyString(environment["VDE_NOTIFIER_TERMINAL"])
     let terminal = resolveTerminalProfile(
       explicitKey: explicitTerminal,
       bundleOverride: options.terminalBundleIdentifier,
       environment: environment
     )
-    let notification = notificationDetails(tmux: tmux, options: options, context: context)
-    let payload = FocusPayload(tmux: tmux, terminal: terminal)
+    let notification = notificationDetails(tmux: tmux, herdr: herdr, options: options, context: context)
+    let payload = FocusPayload(tmux: tmux, herdr: herdr, terminal: terminal)
     let encodedPayload = try encodeFocusPayload(payload)
     guard let actionExecutable = resolveCurrentExecutablePath() else {
       throw ProcessRunnerError.launch(
@@ -61,7 +60,8 @@ enum NotifierCLI {
 
     let detail: [String: Any] = [
       "stage": options.dryRun ? "dry-run" : "notify",
-      "tmux": jsonObject(tmux),
+      "tmux": tmux.map(jsonObject) ?? NSNull(),
+      "herdr": herdr.map(jsonObject) ?? NSNull(),
       "terminal": jsonObject(terminal),
       "notification": [
         "title": notification.title,
@@ -90,13 +90,34 @@ enum NotifierCLI {
 
   private static func runFocus(options: NotifierCLIOptions) throws -> Int32 {
     let payload = try decodeFocusPayload(options.payload)
+    guard payload.tmux != nil || payload.herdr != nil else {
+      throw NotifierCLIError.invalidPayload("focus payload has no multiplexer target")
+    }
     logDiagnostic(options: options, detail: ["stage": "focus", "payload": jsonObject(payload)])
-    try focusPane(payload.tmux)
+    try focusMultiplexers(tmux: payload.tmux, herdr: payload.herdr)
     try activateTerminal(bundleIdentifier: payload.terminal.bundleId)
     return 0
   }
 
+  static func focusMultiplexers(tmux: TmuxContext?, herdr: HerdrContext?) throws {
+    if let herdr {
+      _ = try HerdrAPIClient(socketPath: herdr.socketPath).paneContext(paneId: herdr.paneId)
+    }
+    if let tmux {
+      try validateTmuxPane(tmux)
+      try focusValidatedTmuxPane(tmux)
+    }
+    if let herdr {
+      try HerdrAPIClient(socketPath: herdr.socketPath).focus(paneId: herdr.paneId)
+    }
+  }
+
   static func focusPane(_ context: TmuxContext) throws {
+    try validateTmuxPane(context)
+    try focusValidatedTmuxPane(context)
+  }
+
+  static func validateTmuxPane(_ context: TmuxContext) throws {
     guard context.tmuxBin.hasPrefix("/"), FileManager.default.isExecutableFile(atPath: context.tmuxBin) else {
       throw ProcessRunnerError.launch(executable: context.tmuxBin, message: "tmux path is not an executable absolute path")
     }
@@ -126,12 +147,28 @@ enum NotifierCLI {
     guard parseTmuxIdentifiers(clients.standardOutput).contains(context.clientTTY) else {
       throw NotifierCLIError.invalidPayload("tmux client is no longer available: \(context.clientTTY)")
     }
+  }
+
+  static func focusValidatedTmuxPane(_ context: TmuxContext) throws {
+    let base = ["-S", context.socketPath]
     _ = try ProcessRunner.requireSuccess(
       executable: context.tmuxBin,
       arguments: base + ["switch-client", "-c", context.clientTTY, "-t", context.sessionId]
     )
     _ = try ProcessRunner.requireSuccess(executable: context.tmuxBin, arguments: base + ["select-window", "-t", context.windowId])
     _ = try ProcessRunner.requireSuccess(executable: context.tmuxBin, arguments: base + ["select-pane", "-t", context.paneId])
+  }
+
+  private static func loadTmuxContext(environment: [String: String]) throws -> TmuxContext? {
+    guard nonEmptyString(environment["TMUX_PANE"]) != nil || nonEmptyString(environment["TMUX"]) != nil else {
+      return nil
+    }
+    let tmuxBinary = try resolveExecutable("tmux", environment: environment)
+    let tmuxResult = try ProcessRunner.requireSuccess(
+      executable: tmuxBinary,
+      arguments: tmuxContextArguments(targetPane: environment["TMUX_PANE"])
+    )
+    return try parseTmuxContext(output: tmuxResult.standardOutput, tmuxBinary: tmuxBinary)
   }
 
   private static func activateTerminal(bundleIdentifier: String) throws {

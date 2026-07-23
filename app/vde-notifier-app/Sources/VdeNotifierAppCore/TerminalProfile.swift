@@ -7,18 +7,59 @@ private struct TerminalDescriptor {
 }
 
 private let terminalCatalog: [String: TerminalDescriptor] = [
-  "terminal": .init(name: "Terminal.app", bundleIdentifier: "com.apple.Terminal", aliases: ["terminal", "apple-terminal", "mac-terminal"]),
-  "iterm": .init(name: "iTerm2", bundleIdentifier: "com.googlecode.iterm2", aliases: ["iterm", "iterm2"]),
+  "terminal": .init(
+    name: "Terminal.app",
+    bundleIdentifier: "com.apple.Terminal",
+    aliases: ["terminal", "apple-terminal", "mac-terminal", "apple_terminal"]
+  ),
+  "iterm": .init(
+    name: "iTerm2",
+    bundleIdentifier: "com.googlecode.iterm2",
+    aliases: ["iterm", "iterm2", "iterm.app"]
+  ),
   "alacritty": .init(name: "Alacritty", bundleIdentifier: "org.alacritty", aliases: ["alacritty"]),
   "kitty": .init(name: "kitty", bundleIdentifier: "net.kovidgoyal.kitty", aliases: ["kitty"]),
   "wezterm": .init(name: "WezTerm", bundleIdentifier: "com.github.wez.wezterm", aliases: ["wezterm"]),
   "hyper": .init(name: "Hyper", bundleIdentifier: "co.zeit.hyper", aliases: ["hyper"]),
   "ghostty": .init(name: "Ghostty", bundleIdentifier: "com.mitchellh.ghostty", aliases: ["ghostty"]),
+  "warp": .init(name: "Warp", bundleIdentifier: "dev.warp.Warp-Stable", aliases: ["warp", "warpterminal"]),
+  "vscode": .init(
+    name: "Visual Studio Code",
+    bundleIdentifier: "com.microsoft.VSCode",
+    aliases: ["vscode", "visual-studio-code", "code"]
+  ),
+  "vscodium": .init(name: "VSCodium", bundleIdentifier: "com.vscodium", aliases: ["vscodium", "codium"]),
+  "cursor": .init(
+    name: "Cursor",
+    bundleIdentifier: "com.todesktop.230313mzl4w4u92",
+    aliases: ["cursor"]
+  ),
+  "zed": .init(name: "Zed", bundleIdentifier: "dev.zed.Zed", aliases: ["zed"]),
 ]
 
+private func normalizedTerminalAlias(_ alias: String) -> String {
+  alias.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+}
+
 private func terminalKey(alias: String) -> String? {
-  let value = alias.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+  let value = normalizedTerminalAlias(alias)
   return terminalCatalog.first { $0.value.aliases.contains(value) }?.key
+}
+
+private func terminalKey(alias: String, environment: [String: String]) -> String? {
+  if normalizedTerminalAlias(alias) == "vscode",
+    nonEmptyString(environment["CURSOR_AGENT"]) != nil
+      || nonEmptyString(environment["CURSOR_CLI"]) != nil
+      || nonEmptyString(environment["CURSOR_TRACE_ID"]) != nil
+  {
+    return "cursor"
+  }
+  if normalizedTerminalAlias(alias) == "vscode",
+    environment["VSCODE_GIT_ASKPASS_NODE"]?.lowercased().contains("vscodium") == true
+  {
+    return "vscodium"
+  }
+  return terminalKey(alias: alias)
 }
 
 private func terminalKey(bundleIdentifier: String) -> String? {
@@ -47,8 +88,16 @@ public func resolveTerminalProfile(
     }
     return TerminalProfile(key: "custom", name: explicit, bundleId: explicit, source: .override)
   }
-  for key in ["CA_TERM", "TERM_PROGRAM", "TERM"] {
-    if let value = environment[key], let profileKey = terminalKey(alias: value) {
+  if let value = environment["CA_TERM"], let profileKey = terminalKey(alias: value, environment: environment) {
+    return makeTerminalProfile(key: profileKey, source: .environment)
+  }
+  if let bundleIdentifier = nonEmptyString(environment["__CFBundleIdentifier"]),
+    let profileKey = terminalKey(bundleIdentifier: bundleIdentifier)
+  {
+    return makeTerminalProfile(key: profileKey, source: .environment)
+  }
+  for key in ["TERM_PROGRAM", "TERM"] {
+    if let value = environment[key], let profileKey = terminalKey(alias: value, environment: environment) {
       return makeTerminalProfile(key: profileKey, source: .environment)
     }
   }

@@ -107,6 +107,37 @@ public struct TmuxContext: Codable, Equatable, Sendable {
   }
 }
 
+public struct HerdrContext: Codable, Equatable, Sendable {
+  public let socketPath: String
+  public let paneId: String
+  public let workspaceId: String
+  public let tabId: String
+  public let label: String?
+  public let agent: String?
+  public let title: String?
+  public let currentDirectory: String?
+
+  public init(
+    socketPath: String,
+    paneId: String,
+    workspaceId: String,
+    tabId: String,
+    label: String? = nil,
+    agent: String? = nil,
+    title: String? = nil,
+    currentDirectory: String? = nil
+  ) {
+    self.socketPath = socketPath
+    self.paneId = paneId
+    self.workspaceId = workspaceId
+    self.tabId = tabId
+    self.label = label
+    self.agent = agent
+    self.title = title
+    self.currentDirectory = currentDirectory
+  }
+}
+
 public enum TerminalProfileSource: String, Codable, Equatable, Sendable {
   case override
   case environment = "env"
@@ -128,11 +159,13 @@ public struct TerminalProfile: Codable, Equatable, Sendable {
 }
 
 public struct FocusPayload: Codable, Equatable, Sendable {
-  public let tmux: TmuxContext
+  public let tmux: TmuxContext?
+  public let herdr: HerdrContext?
   public let terminal: TerminalProfile
 
-  public init(tmux: TmuxContext, terminal: TerminalProfile) {
+  public init(tmux: TmuxContext? = nil, herdr: HerdrContext? = nil, terminal: TerminalProfile) {
     self.tmux = tmux
+    self.herdr = herdr
     self.terminal = terminal
   }
 }

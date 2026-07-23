@@ -8,7 +8,7 @@ It provides:
 - Notification click action (`Return to pane`)
 - Action execution using an absolute executable path and argument array
 - Codex and Claude payload parsing
-- tmux pane discovery and focus restoration
+- Herdr and tmux pane discovery and focus restoration, including nested Herdr-in-tmux sessions
 
 ## Development
 

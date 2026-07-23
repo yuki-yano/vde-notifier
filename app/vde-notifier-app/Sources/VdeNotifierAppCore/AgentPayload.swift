@@ -145,13 +145,29 @@ public func extractClaudePayloadDetails(
 }
 
 public func notificationDetails(
-  tmux: TmuxContext,
+  tmux: TmuxContext?,
+  herdr: HerdrContext?,
   options: NotifierCLIOptions,
   context: AgentContext?,
   currentDirectory: String = FileManager.default.currentDirectoryPath
 ) -> NotificationContent {
-  let fallbackTitle = "[\(tmux.sessionName)] \(tmux.windowIndex).\(tmux.paneIndex) (\(tmux.paneId))"
-  let fallbackMessage = "cmd: \(tmux.paneCurrentCommand) | tty: \(tmux.clientTTY)"
+  let fallbackTitle: String
+  let fallbackMessage: String
+  if let herdr {
+    fallbackTitle = "[Herdr] \(herdr.workspaceId)/\(herdr.tabId) (\(herdr.paneId))"
+    let paneDescription = nonEmptyString(herdr.label)
+      ?? nonEmptyString(herdr.title)
+      ?? herdr.currentDirectory.flatMap { nonEmptyString(URL(fileURLWithPath: $0).lastPathComponent) }
+      ?? herdr.paneId
+    fallbackMessage = nonEmptyString(herdr.agent).map { "agent: \($0) | pane: \(paneDescription)" }
+      ?? "pane: \(paneDescription)"
+  } else if let tmux {
+    fallbackTitle = "[\(tmux.sessionName)] \(tmux.windowIndex).\(tmux.paneIndex) (\(tmux.paneId))"
+    fallbackMessage = "cmd: \(tmux.paneCurrentCommand) | tty: \(tmux.clientTTY)"
+  } else {
+    fallbackTitle = "vde-notifier"
+    fallbackMessage = "Task completed"
+  }
   let agentTitle = options.codex
     ? defaultAgentTitle(agent: "codex", currentDirectory: currentDirectory)
     : options.claude ? defaultAgentTitle(agent: "claude", currentDirectory: currentDirectory) : nil

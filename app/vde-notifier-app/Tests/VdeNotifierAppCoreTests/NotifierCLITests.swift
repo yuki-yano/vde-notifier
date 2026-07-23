@@ -146,6 +146,7 @@ final class AgentPayloadTests: XCTestCase {
     options.sound = "Ping"
     let result = notificationDetails(
       tmux: tmux,
+      herdr: nil,
       options: options,
       context: AgentContext(title: "Context title", message: "Context message", sound: "Glass")
     )
@@ -153,9 +154,26 @@ final class AgentPayloadTests: XCTestCase {
   }
 
   func testNotificationDetailsFallbackToTmux() {
-    let result = notificationDetails(tmux: tmux, options: NotifierCLIOptions(), context: nil)
+    let result = notificationDetails(tmux: tmux, herdr: nil, options: NotifierCLIOptions(), context: nil)
     XCTAssertEqual(result.title, "[work] 3.5 (%4)")
     XCTAssertEqual(result.message, "cmd: swift | tty: /dev/ttys001")
+  }
+
+  func testNotificationDetailsPreferHerdrFallbackWhenNestedInTmux() {
+    let herdr = HerdrContext(
+      socketPath: "/tmp/herdr.sock",
+      paneId: "w2:p3",
+      workspaceId: "w2",
+      tabId: "w2:t1",
+      label: "tests",
+      agent: "codex",
+      currentDirectory: "/tmp/project"
+    )
+
+    let result = notificationDetails(tmux: tmux, herdr: herdr, options: NotifierCLIOptions(), context: nil)
+
+    XCTAssertEqual(result.title, "[Herdr] w2/w2:t1 (w2:p3)")
+    XCTAssertEqual(result.message, "agent: codex | pane: tests")
   }
 }
 
@@ -165,6 +183,13 @@ final class FocusAndEnvironmentTests: XCTestCase {
       tmuxBin: "/usr/bin/tmux", socketPath: "/tmp/socket", clientTTY: "/dev/ttys001", sessionId: "$1",
       sessionName: "main", windowId: "@2", windowIndex: 3, paneId: "%4", paneIndex: 5,
       paneCurrentCommand: "zsh"
+    ),
+    herdr: HerdrContext(
+      socketPath: "/tmp/herdr.sock",
+      paneId: "w1:p2",
+      workspaceId: "w1",
+      tabId: "w1:t1",
+      label: "agent"
     ),
     terminal: TerminalProfile(key: "wezterm", name: "WezTerm", bundleId: "com.github.wez.wezterm", source: .override)
   )
@@ -183,6 +208,98 @@ final class FocusAndEnvironmentTests: XCTestCase {
     XCTAssertEqual(resolveTerminalProfile(explicitKey: nil, bundleOverride: "com.example.term", environment: [:]).key, "custom")
   }
 
+  func testMajorTerminalEnvironmentAliases() {
+    let cases: [(environment: [String: String], key: String, bundleId: String)] = [
+      (["TERM_PROGRAM": "Apple_Terminal"], "terminal", "com.apple.Terminal"),
+      (["TERM_PROGRAM": "iTerm.app"], "iterm", "com.googlecode.iterm2"),
+      (["TERM_PROGRAM": "WarpTerminal"], "warp", "dev.warp.Warp-Stable"),
+      (["TERM_PROGRAM": "vscode"], "vscode", "com.microsoft.VSCode"),
+      (["TERM_PROGRAM": "zed"], "zed", "dev.zed.Zed"),
+    ]
+
+    for testCase in cases {
+      let profile = resolveTerminalProfile(explicitKey: nil, bundleOverride: nil, environment: testCase.environment)
+      XCTAssertEqual(profile.key, testCase.key)
+      XCTAssertEqual(profile.bundleId, testCase.bundleId)
+      XCTAssertEqual(profile.source, .environment)
+    }
+  }
+
+  func testVSCodeVariantsAreDistinguished() {
+    let agentProfile = resolveTerminalProfile(
+      explicitKey: nil,
+      bundleOverride: nil,
+      environment: ["TERM_PROGRAM": "vscode", "CURSOR_AGENT": "1"]
+    )
+    XCTAssertEqual(agentProfile.key, "cursor")
+    XCTAssertEqual(agentProfile.bundleId, "com.todesktop.230313mzl4w4u92")
+
+    let integratedTerminalProfile = resolveTerminalProfile(
+      explicitKey: nil,
+      bundleOverride: nil,
+      environment: ["TERM_PROGRAM": "vscode", "CURSOR_CLI": "/Applications/Cursor.app/Contents/MacOS/Cursor"]
+    )
+    XCTAssertEqual(integratedTerminalProfile.key, "cursor")
+
+    let tracedCursorProfile = resolveTerminalProfile(
+      explicitKey: nil,
+      bundleOverride: nil,
+      environment: ["TERM_PROGRAM": "vscode", "CURSOR_TRACE_ID": "trace-1"]
+    )
+    XCTAssertEqual(tracedCursorProfile.key, "cursor")
+
+    let vscodiumProfile = resolveTerminalProfile(
+      explicitKey: nil,
+      bundleOverride: nil,
+      environment: [
+        "TERM_PROGRAM": "vscode",
+        "VSCODE_GIT_ASKPASS_NODE": "/Applications/VSCodium.app/Contents/Frameworks/Electron Framework.framework/Helpers/chrome_crashpad_handler",
+      ]
+    )
+    XCTAssertEqual(vscodiumProfile.key, "vscodium")
+  }
+
+  func testBundleIdentifierDetectsOuterTerminalInsideTmux() {
+    let cases = [
+      ("com.apple.Terminal", "terminal"),
+      ("com.googlecode.iterm2", "iterm"),
+      ("org.alacritty", "alacritty"),
+      ("dev.warp.Warp-Stable", "warp"),
+      ("com.microsoft.VSCode", "vscode"),
+      ("com.vscodium", "vscodium"),
+      ("com.todesktop.230313mzl4w4u92", "cursor"),
+      ("dev.zed.Zed", "zed"),
+    ]
+
+    for (bundleIdentifier, expectedKey) in cases {
+      let profile = resolveTerminalProfile(
+        explicitKey: nil,
+        bundleOverride: nil,
+        environment: [
+          "__CFBundleIdentifier": bundleIdentifier,
+          "TERM_PROGRAM": "tmux",
+          "TERM": "tmux-256color",
+        ]
+      )
+      XCTAssertEqual(profile.key, expectedKey)
+      XCTAssertEqual(profile.source, .environment)
+    }
+  }
+
+  func testCATermStillTakesPriorityOverBundleIdentifierAndTermProgram() {
+    let profile = resolveTerminalProfile(
+      explicitKey: nil,
+      bundleOverride: nil,
+      environment: [
+        "CA_TERM": "ghostty",
+        "__CFBundleIdentifier": "com.microsoft.VSCode",
+        "TERM_PROGRAM": "vscode",
+        "CURSOR_AGENT": "1",
+      ]
+    )
+    XCTAssertEqual(profile.key, "ghostty")
+  }
+
   func testAppleScriptEscapesUntrustedBundleIdentifier() {
     let script = terminalFrontmostScript(bundleIdentifier: "bad\"\nidentifier")
     XCTAssertTrue(script.contains(#""bad\" identifier""#))
@@ -191,7 +308,7 @@ final class FocusAndEnvironmentTests: XCTestCase {
 
   func testTmuxResponseParsing() throws {
     let output = "/tmp/socket\n/dev/ttys001\n$1\nmain\n@2\n3\n%4\n5\nzsh\n"
-    XCTAssertEqual(try parseTmuxContext(output: output, tmuxBinary: "/usr/bin/tmux"), payload.tmux)
+    XCTAssertEqual(try parseTmuxContext(output: output, tmuxBinary: "/usr/bin/tmux"), try XCTUnwrap(payload.tmux))
     XCTAssertThrowsError(try parseTmuxContext(output: output.replacingOccurrences(of: "\n3\n", with: "\n3x\n"), tmuxBinary: "/usr/bin/tmux"))
   }
 

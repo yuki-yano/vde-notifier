@@ -5,6 +5,7 @@ enum UnixSocketError: Error, CustomStringConvertible {
   case pathTooLong(String)
   case connectionClosed
   case lockUnavailable(String)
+  case lineTooLarge(actual: Int, maximum: Int)
   case payloadTooLarge(actual: Int, maximum: Int)
   case unsafeStaleSocket(String)
   case syscallFailed(name: String, errno: Int32)
@@ -14,9 +15,11 @@ enum UnixSocketError: Error, CustomStringConvertible {
     case let .pathTooLong(path):
       return "Unix socket path is too long: \(path)"
     case .connectionClosed:
-      return "Unix socket connection closed before the frame completed"
+      return "Unix socket connection closed before the message completed"
     case let .lockUnavailable(path):
       return "Notification agent lock is already held: \(path)"
+    case let .lineTooLarge(actual, maximum):
+      return "Unix socket line is too large: \(actual) bytes (maximum: \(maximum))"
     case let .payloadTooLarge(actual, maximum):
       return "Unix socket frame is too large: \(actual) bytes (maximum: \(maximum))"
     case let .unsafeStaleSocket(path):
@@ -29,6 +32,7 @@ enum UnixSocketError: Error, CustomStringConvertible {
 }
 
 let maximumFramePayloadBytes = 1024 * 1024
+let maximumSocketLineBytes = 1024 * 1024
 private let frameHeaderBytes = 4
 
 func connectUnixSocket(path: String) throws -> Int32 {
@@ -224,6 +228,46 @@ func writeFrame(_ data: Data, to fd: Int32) throws {
   ])
   try writeAll(header, to: fd)
   try writeAll(data, to: fd)
+}
+
+func readSocketLine(from fd: Int32, maximumBytes: Int = maximumSocketLineBytes) throws -> Data {
+  var data = Data()
+  var buffer = [UInt8](repeating: 0, count: 4096)
+
+  while true {
+    let bytesRead = Darwin.read(fd, &buffer, buffer.count)
+    if bytesRead == 0 {
+      throw UnixSocketError.connectionClosed
+    }
+    if bytesRead < 0 {
+      if errno == EINTR {
+        continue
+      }
+      throw UnixSocketError.syscallFailed(name: "read", errno: errno)
+    }
+
+    let chunk = buffer.prefix(bytesRead)
+    if let newlineIndex = chunk.firstIndex(of: 0x0A) {
+      let count = chunk.distance(from: chunk.startIndex, to: newlineIndex)
+      guard data.count + count <= maximumBytes else {
+        throw UnixSocketError.lineTooLarge(actual: data.count + count, maximum: maximumBytes)
+      }
+      data.append(contentsOf: chunk.prefix(count))
+      return data
+    }
+
+    guard data.count + bytesRead <= maximumBytes else {
+      throw UnixSocketError.lineTooLarge(actual: data.count + bytesRead, maximum: maximumBytes)
+    }
+    data.append(contentsOf: chunk)
+  }
+}
+
+func writeSocketLine(_ data: Data, to fd: Int32) throws {
+  guard data.count <= maximumSocketLineBytes else {
+    throw UnixSocketError.lineTooLarge(actual: data.count, maximum: maximumSocketLineBytes)
+  }
+  try writeAll(data + Data([0x0A]), to: fd)
 }
 
 typealias SocketWriteOperation = (Int32, UnsafeRawPointer, Int) -> Int
